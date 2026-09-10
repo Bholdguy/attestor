@@ -1,6 +1,7 @@
 // Internal read queries used by actions (actions can't touch the DB directly).
 import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 /** All watch_enabled license ids — the cron sweep's fan-out set (D-1/D-7). */
 export const watchedLicenseIds = internalQuery({
@@ -37,5 +38,25 @@ export const loopInputs = internalQuery({
       assignment,
       demo_mode: settings?.demo_mode ?? false,
     };
+  },
+});
+
+/**
+ * If this license's most recent snapshot was a FETCH-level failure
+ * (rate_limited / blocked / timeout / http_error), return its id so the next
+ * sweep's snapshot can link back via retry_of_snapshot_id — the timeline shows
+ * the retry as its own dot connected to the failure, never a gap (D-7).
+ */
+export const retryTarget = internalQuery({
+  args: { licenseId: v.id("licenses") },
+  handler: async (ctx, { licenseId }): Promise<Id<"snapshots"> | null> => {
+    const latest = await ctx.db
+      .query("snapshots")
+      .withIndex("by_license", (q) => q.eq("license_id", licenseId))
+      .order("desc")
+      .first();
+    if (!latest) return null;
+    const retryable = ["rate_limited", "blocked", "timeout", "http_error"];
+    return retryable.includes(latest.fetch_status) ? latest._id : null;
   },
 });

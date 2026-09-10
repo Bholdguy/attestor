@@ -12,6 +12,7 @@ import type * as badge from "../badge.js";
 import type * as commit from "../commit.js";
 import type * as contract from "../contract.js";
 import type * as crons from "../crons.js";
+import type * as firecrawl from "../firecrawl.js";
 import type * as fixtures_index from "../fixtures/index.js";
 import type * as health from "../health.js";
 import type * as lib_hash from "../lib/hash.js";
@@ -19,6 +20,7 @@ import type * as loop from "../loop.js";
 import type * as read from "../read.js";
 import type * as roster from "../roster.js";
 import type * as sweep from "../sweep.js";
+import type * as timeline from "../timeline.js";
 
 import type {
   ApiFromModules,
@@ -31,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   commit: typeof commit;
   contract: typeof contract;
   crons: typeof crons;
+  firecrawl: typeof firecrawl;
   "fixtures/index": typeof fixtures_index;
   health: typeof health;
   "lib/hash": typeof lib_hash;
@@ -38,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   read: typeof read;
   roster: typeof roster;
   sweep: typeof sweep;
+  timeline: typeof timeline;
 }>;
 
 /**

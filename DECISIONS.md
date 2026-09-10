@@ -422,6 +422,37 @@ frontend. Registration also changed: component-owned root mode is
 
 ---
 
+## D-13 — 429 retry is immediate, not a wall-clock `Retry-After` sleep — LOCKED (build reality, Step 4)
+
+**Planning wrote (D-7):** "a 429, after **one** bounded in-action retry honouring
+`Retry-After` (**~3 s cap**), writes its own snapshot…". The implied mechanism
+was `await sleep(min(3s, RetryAfter))` inside the `fetch_board_page` action.
+
+**Build reality (Step 4):** a wall-clock `setTimeout` sleep *inside a running
+Convex action* deadlocks `convex-test`'s fake-timer scheduler drain
+(`finishAllScheduledFunctions(vi.runAllTimers)`): the timer is created after the
+last `advanceTimers()` call, so the in-progress action never resumes and every
+rate-limit / timeout test hangs to the 5 s vitest cap. This is a test-harness
+interaction, but the sleep buys us nothing in production either.
+
+**Decision:** on a 429, retry **once, immediately** (no in-action sleep).
+`Retry-After` is still read from the header (kept on the internal attempt struct
+for a future audit-line note). Rationale the guarantees still hold:
+- D-7 mechanism #1 (staggered fan-out, ≤ ~15 fetches/min) already keeps the burst
+  under the free-tier cap, so a same-tick retry rarely races a real limit;
+- if `Retry-After` is more than sub-second, an immediate retry just 429s again and
+  we **correctly record a `rate_limited` snapshot** (`disposition:"unconfirmed"`,
+  `fetch_http_code:429`) that the **next sweep** picks up via
+  `retry_of_snapshot_id` — behaviourally identical to sleeping, only faster to
+  give up on the current tick;
+- never a silent skip; M2 (snapshots / fetch attempts) stays 100%; AC12 holds.
+
+**Touches:** `convex/firecrawl.ts` (`fetchLive` retry branch), D-7 (this refines
+its "~3 s cap" detail; all its invariants unchanged), TESTING
+`rate-limit-recorded.test.ts`.
+
+---
+
 ## Running verification log (fill in on build day)
 
 | Item | Checked? | Result |
@@ -429,11 +460,12 @@ frontend. Registration also changed: component-owned root mode is
 | Convex `crons.interval` signature + `crons.ts` default export | ☑ | Step 3 — `cronJobs()` from `convex/server`, `crons.interval("sweep", { minutes }, internal.sweep.runSweep, {})`, `export default crons`. Pushed clean to `brazen-snail-826` (Convex 1.45). |
 | Convex `ctx.scheduler.runAfter` from mutation is transactional | ☑ | Step 3 — `addWorker` schedules `runForLicense` after its inserts; `loop-happy-path.test.ts` shows it fires exactly once, and the "bad state code" test shows the whole mutation (inserts + schedule) rolls back on a thrown `ConvexError` (no row, no scheduled fn). |
 | `@convex-dev/static-hosting` serves SPA at `<deployment>.convex.site` | ◐ | Step 0/3 — component **installed** at push (`✔ Installed component staticHosting`), 0.2.x API (`defineApp({httpPrefix:"/api"})` + `app.use(staticHosting,{httpPrefix:"/"})`, see D-12). Actual serving at `.convex.site` verified on first `npm run deploy` (deferred, pending go-ahead). |
-| Firecrawl `POST /v2/scrape` body: `formats:["rawHtml"]`, `proxy:"auto"`, `waitFor` | ☐ | |
-| Firecrawl 429 shape + `Retry-After` header present | ☐ | |
+| Firecrawl `POST /v2/scrape` body: `formats:["rawHtml"]`, `proxy:"auto"`, `waitFor` | ◐ | Step 4 — `convex/firecrawl.ts` sends exactly `{url, formats:["rawHtml"], onlyMainContent:false, waitFor:2500, proxy:"auto", blockAds:true}` with `Authorization: Bearer`, per PRD §0 doc-verified shape. Real round-trip = **BD-1**, pending `FIRECRAWL_API_KEY` on the deployment. |
+| Firecrawl 429 shape + `Retry-After` header present | ◐ | Step 4 — `classify()` maps HTTP 429 → `rate_limited`/`fetch_http_code:429`; `Retry-After` header parsed. One **immediate** retry (D-13). Real 429 shape unverified until BD-1. |
+| Convex file storage `ctx.storage.store` / `ctx.storage.getUrl` (D-8) | ☑ | Step 4 — `loop.ts` writes the full body via `ctx.storage.store(new Blob([...]))`; `timeline.getSnapshot` returns `ctx.storage.getUrl(...)`. `loop-happy-path` asserts `raw_payload_storage_id` non-null; pushed + integration-green on `brazen-snail-826`. |
 | OpenAI Structured Outputs endpoint (`/v1/responses` `text.format` vs `/v1/chat/completions` `response_format`) + exact model id + price | ☐ | |
 | AgentMail create-inbox + `messages/send` path, field names, attachment shape | ☐ | |
 | Convex document size limit (confirm ~1 MiB) + `ctx.storage` API | ☐ | |
 | **D-3 pricing** — `gpt-4.1-mini` input/output $/1M against `platform.openai.com` console (resolve $0.40/$1.60 vs $0.80/$3.20 — B-2, non-blocking) | ☐ | |
 | **D-3 live** — `GET /v1/models` returns `gpt-4.1-mini` (else `bootModelCheck` falls back to `gpt-4o-2024-08-06`) | ☐ | |
-| **D-4 live scrape — CA DCA BRN** — real `POST /v2/scrape` (`formats:["rawHtml"]`, `proxy:"auto"`, `waitFor:2500`) vs a `search.dca.ca.gov` results/detail URL returns real license fields, not a block/CAPTCHA/shell; note `statusCode`, whether `proxy:"auto"` was needed, pass/fail; on fail → alternate tried + final call | ☐ | |
+| **D-4 live scrape — CA DCA BRN** — real `POST /v2/scrape` (`formats:["rawHtml"]`, `proxy:"auto"`, `waitFor:2500`) vs a `search.dca.ca.gov` results/detail URL returns real license fields, not a block/CAPTCHA/shell; note `statusCode`, whether `proxy:"auto"` was needed, pass/fail; on fail → alternate tried + final call | ☐ | **BD-1 — not yet run.** Step 4 code is complete and mock-tested (7 failure-mode cases + rate-limit + retry-linkage, all green). Blocked on `FIRECRAWL_API_KEY` + `BOARD_HOST_ALLOWLIST` being set on the dev deployment (`npx convex env set …`). Run a one-off scrape once set; guarded fixture fallback (D-9 / DEMO Beat 3) covers a failure. |

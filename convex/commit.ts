@@ -106,7 +106,9 @@ export const commitFetchResult = internalMutation({
       ...base,
       stage: "fetch",
       outcome: args.fetch_status,
-      message: `fetch ${args.fetch_status} (${args.fetch_http_code ?? "—"}) ${args.source_url}`,
+      message:
+        `fetch ${args.fetch_status} (${args.fetch_http_code ?? "—"}) ${args.source_url}` +
+        (args.retry_of_snapshot_id ? ` · retry of ${args.retry_of_snapshot_id}` : ""),
     });
     await ctx.db.insert("audit_events", {
       ...base,

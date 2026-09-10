@@ -1,25 +1,17 @@
 // runForLicense — the ONE non-atomic step (ACTION). It performs only the
-// non-deterministic edges (Firecrawl scrape, file-storage write, OpenAI extract
-// — wired in Steps 4–5) and hands plain values to commitFetchResult. It catches
-// every throw: a failed fetch/extract still ends in a commitFetchResult call
-// with the right non-"ok" fetch_status (ARCHITECTURE §8, last row) — never a
-// silent drop.
+// non-deterministic edges — Firecrawl scrape (fetch_board_page) and the
+// file-storage write (ctx.storage.store, D-8) — and hands plain values to
+// commitFetchResult. OpenAI extraction is added in Step 5.
 //
-// Step 3 stub: synthesise a fetch_status:"ok" payload so the atomic write path
-// is exercised end-to-end from day one.
+// It catches every throw: a failed fetch still ends in a commitFetchResult call
+// with the right non-"ok" fetch_status (ARCHITECTURE §8, last row) — never a
+// silent drop (F5).
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { sha256Hex, utf8Bytes, excerpt } from "./lib/hash";
-import type { FetchStatus } from "./contract";
-
-interface FetchPayload {
-  source_url: string;
-  source_mode: "live" | "fixture";
-  raw_html: string;
-  fetch_status: FetchStatus;
-  fetch_http_code: number | null;
-}
+import { fetch_board_page, type FetchBoardResult } from "./firecrawl";
 
 export const runForLicense = internalAction({
   args: { licenseId: v.id("licenses") },
@@ -27,44 +19,64 @@ export const runForLicense = internalAction({
   handler: async (ctx, { licenseId }): Promise<null> => {
     const fetched_at = Date.now();
 
-    let payload: FetchPayload;
+    const inputs = await ctx.runQuery(internal.read.loopInputs, { licenseId });
+    if (!inputs || !inputs.license) return null; // license removed between schedule and run
+    const { license, demo_mode } = inputs;
+
+    const mode: "live" | "fixture" =
+      demo_mode || license.board_profile_url.startsWith("fixture://") ? "fixture" : "live";
+
+    // link this snapshot to a prior FETCH-level failure, if any (D-7)
+    const retry_of_snapshot_id = await ctx.runQuery(internal.read.retryTarget, { licenseId });
+
+    let result: FetchBoardResult;
     try {
-      // Step 4 replaces this with fetch_board_page() + ctx.storage.store().
-      payload = {
-        source_url: `stub://${licenseId}`,
-        source_mode: "live",
-        raw_html: `<!doctype html><html><head><title>stub</title></head><body><p>stub fetch for ${licenseId} @ ${fetched_at}</p></body></html>`,
-        fetch_status: "ok",
-        fetch_http_code: 200,
-      };
+      result = await fetch_board_page({
+        license_number: license.license_number,
+        state: license.issuing_state,
+        board_profile_url: license.board_profile_url,
+        mode,
+      });
     } catch (err) {
-      payload = {
-        source_url: `stub://${licenseId}`,
-        source_mode: "live",
-        raw_html: "",
+      // Any unexpected throw becomes a recorded http_error snapshot, not a drop.
+      console.error(`runForLicense ${licenseId} fetch threw:`, (err as Error)?.message);
+      const raw_html = "";
+      result = {
+        raw_html,
+        raw_payload_sha256: await sha256Hex(raw_html),
+        raw_payload_excerpt: excerpt(raw_html),
+        raw_payload_bytes: utf8Bytes(raw_html),
+        source_url: license.board_profile_url,
+        source_mode: mode,
+        fetched_at,
         fetch_status: "http_error",
         fetch_http_code: null,
       };
-      console.error(`runForLicense ${licenseId} fetch threw:`, (err as Error)?.message);
     }
 
-    const raw_payload_sha256 = await sha256Hex(payload.raw_html);
+    // D-8 — full verbatim payload → Convex file storage. Skip only when there is
+    // no body at all (timeout / DNS failure / non-2xx error envelope).
+    let raw_payload_storage_id: Id<"_storage"> | null = null;
+    if (result.raw_html.length > 0) {
+      const blob = new Blob([result.raw_html], { type: "text/html" });
+      raw_payload_storage_id = await ctx.storage.store(blob);
+    }
 
     await ctx.runMutation(internal.commit.commitFetchResult, {
       license_id: licenseId,
-      fetched_at,
-      source_url: payload.source_url,
-      source_mode: payload.source_mode,
-      raw_payload_storage_id: null, // Step 4: ctx.storage.store id
-      raw_payload_excerpt: excerpt(payload.raw_html),
-      raw_payload_sha256,
-      raw_payload_bytes: utf8Bytes(payload.raw_html),
-      fetch_status: payload.fetch_status,
-      fetch_http_code: payload.fetch_http_code,
+      fetched_at: result.fetched_at,
+      source_url: result.source_url,
+      source_mode: result.source_mode,
+      raw_payload_storage_id,
+      raw_payload_excerpt: result.raw_payload_excerpt,
+      raw_payload_sha256: result.raw_payload_sha256,
+      raw_payload_bytes: result.raw_payload_bytes,
+      fetch_status: result.fetch_status,
+      fetch_http_code: result.fetch_http_code,
       extracted_fields: null, // Step 5: extract_license_fields
       extractor_model: null,
       extractor_raw_response: null,
-      retry_of_snapshot_id: null, // Step 4: set on a next-sweep retry
+      retry_of_snapshot_id,
     });
     return null;
   },

@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import type { Id } from "../convex/_generated/dataModel";
 import { badgeDisplay } from "../convex/badge";
+import { SnapshotDrawer } from "./components/SnapshotDrawer";
 
 // Step 3 UI — minimal Add-worker form + reactive roster list. The full operator
 // dashboard (timeline, snapshot drawer, compare, cases, metrics, DEMO banner)
@@ -28,6 +30,7 @@ export default function App() {
   const [form, setForm] = useState({ ...BLANK });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [openSnapshot, setOpenSnapshot] = useState<Id<"snapshots"> | null>(null);
 
   const set = (k: keyof typeof BLANK) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -122,8 +125,17 @@ export default function App() {
                       {r.confirmedSnapshotId ?? "—"}
                     </td>
                     <td style={{ padding: "6px 8px" }}>
-                      {r.latestFetchStatus ?? "—"}
-                      {r.latestDisposition ? ` · ${r.latestDisposition}` : ""}
+                      {r.latestSnapshotId ? (
+                        <button
+                          onClick={() => setOpenSnapshot(r.latestSnapshotId)}
+                          style={{ font: "inherit", cursor: "pointer" }}
+                        >
+                          {r.latestFetchStatus ?? "—"}
+                          {r.latestDisposition ? ` · ${r.latestDisposition}` : ""}
+                        </button>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 );
@@ -132,6 +144,10 @@ export default function App() {
           </table>
         )}
       </section>
+
+      {openSnapshot && (
+        <SnapshotDrawer snapshotId={openSnapshot} onClose={() => setOpenSnapshot(null)} />
+      )}
     </main>
   );
 }

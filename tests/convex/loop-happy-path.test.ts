@@ -36,8 +36,10 @@ describe("Step 3 — scheduled watch → atomic commit", () => {
       expect(snaps).toHaveLength(1);
       const [snap] = snaps;
       expect(snap.disposition).toBe("confirmed");
-      expect(snap.source_mode).toBe("live");
+      // fixture:// board URL ⇒ fixture branch, labelled source_mode (I7)
+      expect(snap.source_mode).toBe("fixture");
       expect(snap.fetch_status).toBe("ok");
+      expect(snap.raw_payload_storage_id).not.toBeNull(); // D-8 blob written even for fixtures
       expect(snap.raw_payload_sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(snap.raw_payload_excerpt.length).toBeGreaterThan(0);
 
