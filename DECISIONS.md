@@ -453,6 +453,84 @@ its "~3 s cap" detail; all its invariants unchanged), TESTING
 
 ---
 
+## D-14 — AgentMail REST paths are versioned `/v0/...` — LOCKED (build reality)
+
+**Planning wrote (PRD §0, TASKS Step 8):** create inbox at
+`POST https://api.agentmail.to/inboxes`; send at
+`POST https://api.agentmail.to/inboxes/{inbox_id}/messages/send`.
+
+**Build reality (2026-09-10, verified against `docs.agentmail.to` + a real
+`createAgentMailInbox` run):** the current AgentMail REST API is **version-prefixed**.
+Inbox creation is `POST https://api.agentmail.to/v0/inboxes`; the response field
+carrying the identifier is **`inbox_id`** (an email address, e.g.
+`difficultkey38@agentmail.to`) alongside `email`, `pod_id`, timestamps. The
+alert inbox was created this way and `AGENTMAIL_INBOX_ID` set to that value.
+
+**Decision:** all AgentMail calls use the `/v0/` prefix off `AGENTMAIL_BASE_URL`
+(`https://api.agentmail.to`). Step 8's `convex/agentmail.ts` wrapper builds
+`${AGENTMAIL_BASE_URL}/v0/inboxes/${inboxId}/messages/send`. `client_id` is
+accepted but AgentMail assigns its own random username — the returned `inbox_id`
+is authoritative, not the `client_id`. No behavioural change to the alerting
+design (I8, one send per case); only the URL path and the id field name.
+
+**Touches:** `convex/setup.ts` (already `/v0/inboxes`), `convex/agentmail.ts`
+(Step 8), PRD §0 + Step 8 (path), `.env.example` (`AGENTMAIL_INBOX_ID` real
+value), SECURITY §6 (endpoint list).
+
+---
+
+## D-15 — BD-1: CA DCA live scrape blocked by Cloudflare Turnstile → fixture fallback for DEMO Beat 3 — LOCKED (build-day outcome)
+
+**D-4 assumed:** "the real `POST /v2/scrape` (`formats:["rawHtml"]`, `proxy:"auto"`,
+`waitFor:2500`) against a `search.dca.ca.gov` results/detail URL returns real
+license fields" — i.e. the CA DCA Board of Registered Nursing page would be
+scrapable with Firecrawl's JS-render + stealth-proxy options.
+
+**BD-1 outcome (2026-09-10, real `FIRECRAWL_API_KEY` on `brazen-snail-826`, via
+`setup:firecrawlProbe`):**
+- Firecrawl **reaches the host fine**: `POST /v2/scrape` → HTTP 200, `data.rawHtml`
+  ~320 KB, `data.metadata.statusCode:200`, not IP-blocked, with `proxy:"auto"`
+  **and** `proxy:"stealth"`, `waitFor` up to 12 s.
+- **But the DCA app is behind Cloudflare Turnstile.** The returned HTML contains
+  `challenges.cloudflare.com/cdn-cgi/challenge-platform/.../turnstile/...` links,
+  `<title>Search - DCA`, and the results container `div.searchContainer` with
+  inline `style="display:none"` — the SPA never advances past the bot check, so
+  no licensee record ever renders. Every results-URL variant (correct field names
+  `boardCode` / `licenseType` / `lastName`, captured from the live form) returned
+  the same gated shell.
+- **Alternate tried (per D-4's instruction, "try one alternate first"):**
+  NC Board of Nursing, `https://portal.ncbon.com/verification/search.aspx` —
+  `proxy:"auto"` cleared the previously-seen 403 (HTTP 200) but returned an
+  11.8 KB "continue session" interstitial, no license markers. Not pursued
+  further.
+
+**Decision:**
+- **DEMO.md Beat 3's live-integration proof runs on the pre-seeded fixture
+  Nurse A**, with the one-sentence spoken acknowledgement already scripted in
+  DEMO.md ("Board's rate-limiting us live — here's the same thing on our seeded
+  fixture"). Update that line to name the real reason (bot challenge) if desired;
+  the beat structure is unchanged.
+- **The Firecrawl integration is still demonstrably real:** BD-1 captured a live
+  HTTP 200 `/v2/scrape` of a real `.gov` board host (logged in the verification
+  table), and fixture mode runs the **identical** code path
+  (`fetch_board_page → ctx.storage.store → commitFetchResult`), only the network
+  edge is swapped (D-9). `source_mode:"live"` snapshots from BD-1 probe runs are
+  *not* left in the roster (the probe is a raw diagnostic, not a `runForLicense`
+  pass); if standing live evidence in the deployment is wanted, point one seeded
+  license at `https://search.dca.ca.gov/` (it will store a real `ok` 320 KB
+  `source_mode:"live"` snapshot whose extraction then yields low-confidence /
+  `unknown` fields — honest, and still real Firecrawl+OpenAI work).
+- `BOARD_HOST_ALLOWLIST=search.dca.ca.gov` stays as-is (the chosen live target);
+  no code change — the guarded fallback was already built (D-9, Step 4 fixture
+  branch). `convex/setup.ts:firecrawlProbe` kept as an env-only diagnostic.
+- Not a blocker: AUDIT.md and D-4 both pre-authorised this exact path.
+
+**Touches:** DECISIONS *Running verification log* (D-4 row), DEMO.md Beat 3
+(reason wording, optional), PRD §12 "Firecrawl does real work" row (BD-1 live 200
+scrape is the evidence, fixture path labelled). No implementation change.
+
+---
+
 ## Running verification log (fill in on build day)
 
 | Item | Checked? | Result |
@@ -460,12 +538,12 @@ its "~3 s cap" detail; all its invariants unchanged), TESTING
 | Convex `crons.interval` signature + `crons.ts` default export | ☑ | Step 3 — `cronJobs()` from `convex/server`, `crons.interval("sweep", { minutes }, internal.sweep.runSweep, {})`, `export default crons`. Pushed clean to `brazen-snail-826` (Convex 1.45). |
 | Convex `ctx.scheduler.runAfter` from mutation is transactional | ☑ | Step 3 — `addWorker` schedules `runForLicense` after its inserts; `loop-happy-path.test.ts` shows it fires exactly once, and the "bad state code" test shows the whole mutation (inserts + schedule) rolls back on a thrown `ConvexError` (no row, no scheduled fn). |
 | `@convex-dev/static-hosting` serves SPA at `<deployment>.convex.site` | ◐ | Step 0/3 — component **installed** at push (`✔ Installed component staticHosting`), 0.2.x API (`defineApp({httpPrefix:"/api"})` + `app.use(staticHosting,{httpPrefix:"/"})`, see D-12). Actual serving at `.convex.site` verified on first `npm run deploy` (deferred, pending go-ahead). |
-| Firecrawl `POST /v2/scrape` body: `formats:["rawHtml"]`, `proxy:"auto"`, `waitFor` | ◐ | Step 4 — `convex/firecrawl.ts` sends exactly `{url, formats:["rawHtml"], onlyMainContent:false, waitFor:2500, proxy:"auto", blockAds:true}` with `Authorization: Bearer`, per PRD §0 doc-verified shape. Real round-trip = **BD-1**, pending `FIRECRAWL_API_KEY` on the deployment. |
-| Firecrawl 429 shape + `Retry-After` header present | ◐ | Step 4 — `classify()` maps HTTP 429 → `rate_limited`/`fetch_http_code:429`; `Retry-After` header parsed. One **immediate** retry (D-13). Real 429 shape unverified until BD-1. |
+| Firecrawl `POST /v2/scrape` body: `formats:["rawHtml"]`, `proxy:"auto"`, `waitFor` | ☑ | **BD-1 (2026-09-10)** — real `POST /v2/scrape` with the exact production body ran against `https://search.dca.ca.gov/` and returned **HTTP 200, ~320 KB `data.rawHtml`, `metadata.statusCode:200`, not IP-blocked**. `proxy:"auto"` succeeded. Body shape + Bearer auth + `data.rawHtml` / `data.metadata.statusCode` response fields all confirmed against the live API. (The DCA *content* is a separate matter — see D-4 row.) |
+| Firecrawl 429 shape + `Retry-After` header present | ◐ | Step 4 — `classify()` maps HTTP 429 → `rate_limited`/`fetch_http_code:429`; `Retry-After` header parsed. One **immediate** retry (D-13). No real 429 hit during BD-1 (free tier held); mapping is unit-covered (`rate-limit-recorded.test.ts`). |
 | Convex file storage `ctx.storage.store` / `ctx.storage.getUrl` (D-8) | ☑ | Step 4 — `loop.ts` writes the full body via `ctx.storage.store(new Blob([...]))`; `timeline.getSnapshot` returns `ctx.storage.getUrl(...)`. `loop-happy-path` asserts `raw_payload_storage_id` non-null; pushed + integration-green on `brazen-snail-826`. |
 | OpenAI Structured Outputs endpoint (`/v1/responses` `text.format` vs `/v1/chat/completions` `response_format`) + exact model id + price | ◐ | Step 5 — implemented against **`POST /v1/chat/completions`** with `response_format: { type:"json_schema", json_schema:{ name, strict:true, schema } }` (additionalProperties:false, all 9 keys required), `temperature:0`, `max_tokens` from `OPENAI_MAX_OUTPUT_TOKENS`. `refusal` handled. `bootModelCheck()` = `GET /v1/models`. Real round-trip + price eyeball = **BD-2**, pending `OPENAI_API_KEY` on the deployment. |
 | AgentMail create-inbox + `messages/send` path, field names, attachment shape | ☐ | |
 | Convex document size limit (confirm ~1 MiB) + `ctx.storage` API | ☐ | |
-| **D-3 pricing** — `gpt-4.1-mini` input/output $/1M against `platform.openai.com` console (resolve $0.40/$1.60 vs $0.80/$3.20 — B-2, non-blocking) | ☐ | BD-2 — eyeball once `OPENAI_API_KEY` / console access available. |
-| **D-3 live** — `GET /v1/models` returns `gpt-4.1-mini` (else `bootModelCheck` falls back to `gpt-4o-2024-08-06`) | ☐ | BD-2 — hook ready: `npx convex run boot:checkModel` (or first live extraction). Pending `OPENAI_API_KEY` on `brazen-snail-826`. `model-check.test.ts` covers the fallback/proceed paths. |
-| **D-4 live scrape — CA DCA BRN** — real `POST /v2/scrape` (`formats:["rawHtml"]`, `proxy:"auto"`, `waitFor:2500`) vs a `search.dca.ca.gov` results/detail URL returns real license fields, not a block/CAPTCHA/shell; note `statusCode`, whether `proxy:"auto"` was needed, pass/fail; on fail → alternate tried + final call | ☐ | **BD-1 — not yet run.** Step 4 code is complete and mock-tested (7 failure-mode cases + rate-limit + retry-linkage, all green). Blocked on `FIRECRAWL_API_KEY` + `BOARD_HOST_ALLOWLIST` being set on the dev deployment (`npx convex env set …`). Run a one-off scrape once set; guarded fixture fallback (D-9 / DEMO Beat 3) covers a failure. |
+| **D-3 pricing** — `gpt-4.1-mini` input/output $/1M against `platform.openai.com` console (resolve $0.40/$1.60 vs $0.80/$3.20 — B-2, non-blocking) | ☐ | **BD-2 (2026-09-10)** — still needs the reviewer to eyeball the console. Public docs (`openai.com/api/pricing`, retrieved 2026-09-10) show **`gpt-4.1-mini` = $0.40 / 1M input, $1.60 / 1M output** (cached input $0.10). Use this in DEMO.md/pitch unless the console shows otherwise. The $0.80/$3.20 figure from one earlier read was not reproduced. |
+| **D-3 live** — `GET /v1/models` returns `gpt-4.1-mini` (else `bootModelCheck` falls back to `gpt-4o-2024-08-06`) | ☑ | **BD-2 (2026-09-10)** — `npx convex run boot:checkModel` on `brazen-snail-826` with the real `OPENAI_API_KEY`: `GET /v1/models` succeeded, `gpt-4.1-mini` **is present**, `resolved_model: "gpt-4.1-mini"` (no fallback needed). `bootModelCheck()` runs once on the first live extraction and is memoised. |
+| **D-4 live scrape — CA DCA BRN** — real `POST /v2/scrape` … returns real license fields, not a block/CAPTCHA/shell | ✗→fixture | **BD-1 (2026-09-10) — live scrape of DCA content FAILED; fixture fallback taken (as designed, D-9 / DEMO Beat 3).** Firecrawl reached `search.dca.ca.gov` fine (HTTP 200, ~320 KB, `proxy:"auto"` + `proxy:"stealth"`, `waitFor` up to 12 s), but the page carries a **Cloudflare Turnstile** challenge (`challenges.cloudflare.com/.../turnstile/...` in the body) and the SPA stays on the search form (`div.searchContainer style="display:none"`, `<title>Search - DCA`) — never renders results/detail. Real form field names captured (`boardCode`, `licenseType`, `licenseNumber`, `lastName`, …) but the data fetch is gated. **Alternate tried:** NC BON (`portal.ncbon.com/verification/search.aspx`) — `proxy:"auto"` got past the old 403 (HTTP 200) but returned an 11.8 KB session-interstitial, no license markers. **Final call:** DEMO Beat 3's live-integration proof runs on the **pre-seeded fixture Nurse A** with one spoken acknowledgement; the *Firecrawl integration itself is proven live* (200 scrape of a real .gov board host, evidence above) and demo/fixture mode exercises the identical `fetch_board_page → ctx.storage.store → commitFetchResult` path. See D-15. |
