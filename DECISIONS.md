@@ -1,0 +1,405 @@
+# DECISIONS.md — Attestor
+
+Every place a sponsor capability did not work as the brief assumed, or a design
+ambiguity was closed, and what we did instead. Numbered `D-N` to match `PRD.md`
+§14. Add new entries at the bottom; never renumber.
+
+Status legend: **LOCKED** (decided, build to it) · **CONFIRM ON BUILD DAY**
+(re-verify against live docs/APIs, then lock).
+
+---
+
+## D-1 — Cron fan-out, not one cron per license — LOCKED
+
+**Brief assumed:** "one scheduled function per watched license."
+
+**Reality (Convex docs, 2026-09-10):** cron jobs must be **statically defined** in
+`convex/crons.ts` at deploy time. Per-license dynamic cron registration is only
+possible via the `@convex-dev/crons` component.
+
+**Decision:** one static `crons.interval("sweep", { minutes: 5 }, …)` that reads
+`watch_enabled` licenses and fans out one **scheduled action**
+(`ctx.scheduler.runAfter(0, internal.loop.runForLicense, {licenseId})`) per
+license. Scheduled functions *can* be created dynamically; crons cannot. The
+runtime-cron component was rejected as unnecessary weight for a demo.
+
+**Touches:** `convex/crons.ts`, `convex/sweep.ts`, PRD §0, §2, §5.
+
+---
+
+## D-2 — Extraction is our own OpenAI call, not Firecrawl's `json` format — LOCKED
+
+**Brief assumed:** OpenAI extracts strict-JSON fields (implied: a separate step).
+
+**Reality:** Firecrawl `/v2/scrape` *does* offer `formats:[{type:"json",schema,
+prompt}]` that would return extracted fields in the same call.
+
+**Decision:** keep extraction in a **separate** OpenAI Structured Outputs call.
+Folding FETCH and EXTRACT into one Firecrawl call would collapse two independently
+observable, independently testable stages into one opaque step, and would make
+the "OpenAI does real work" claim weaker. Firecrawl returns `rawHtml` only; our
+`openai.ts` turns it into `ExtractedFields`.
+
+**Touches:** `convex/firecrawl.ts` (rawHtml only), `convex/openai.ts`, PRD §0, §5.
+
+---
+
+## D-3 — OpenAI model id is pinned + verified at boot — LOCKED (doc-verified in cross-check audit; see D-11(e))
+
+**Brief asked:** "current model names and pricing tier."
+
+**Reality:** web sources during research returned **implausible / poisoned** model
+names ("GPT-6 Astra", "gpt-5.6-sol", "Terra") — not trustworthy. Structured
+Outputs is documented as supported on `gpt-4o-2024-08-06` and later, the
+`gpt-4.1` family, and the `gpt-5` family.
+
+**Decision:**
+- `OPENAI_MODEL` env var, default **`gpt-4.1-mini`**.
+- On first extraction call, `bootModelCheck()` hits `GET /v1/models` once; if the
+  configured id is absent, log a warning and fall back to **`gpt-4o-2024-08-06`**
+  (known-good for Structured Outputs).
+- **Cross-check audit (2026-09-10):** verified against
+  `developers.openai.com/api/docs/models/gpt-4.1-mini` — `gpt-4.1-mini` exists,
+  lists `structured_outputs` support, 1,047,576 ctx / 32,768 out / 2024-06-01
+  cutoff; standard price $0.40/1M in, $1.60/1M out (multi-source). Live
+  `GET /v1/models` could not be run in the audit environment (no key) — it
+  remains the first-run `bootModelCheck()` guard. One pricing-page read showed a
+  conflicting $0.80/$3.20; eyeball once with account access, does not change the
+  choice. Full detail in **D-11(e)**.
+
+**Touches:** `convex/openai.ts`, `.env.example`, PRD §0, §5, TESTING `model-check.test.ts`.
+
+---
+
+## D-4 — Live board target + fixture fallback — LOCKED (target chosen; live scrape verified on build day)
+
+**Brief assumed:** Firecrawl reliably reaches a state board page.
+
+**Risk:** many boards are JS-heavy, hard-blocked, or rate-limited; a live fetch
+may not be reliable within the hackathon timeline.
+
+**Decision (LOCKED, reviewer-approved 2026-09-10):**
+- **Live-mode target: California DCA — Board of Registered Nursing**, via
+  `https://search.dca.ca.gov/`. Chosen because it is public, requires **no
+  login**, exposes a Registered Nursing board, and documents the status
+  vocabulary Attestor extracts (current / expired / suspended / revoked /
+  disciplinary).
+- `BOARD_HOST_ALLOWLIST=search.dca.ca.gov` in `fetch_board_page`.
+- `proxy:"auto"` + `waitFor:2500` — the DCA **results/detail pages render
+  client-side**, so Firecrawl must execute JS; this is exactly what those
+  options are for.
+- This is a **design decision, not yet a verified live scrape.** The unauthenticated
+  cross-check audit could not exercise `proxy:"auto"` / `waitFor` (no key). The
+  real `POST /v2/scrape` verification happens **on build day at Step 4**, with
+  real Firecrawl credentials, and its outcome is recorded in the *Running
+  verification log* table below (row: "D-4 live scrape — CA DCA BRN").
+- **Fallback (unchanged, already designed):** if the live scrape fails at Step 4
+  (block page / CAPTCHA / empty shell / rate cap), the documented disclosed path
+  is the seeded fixtures (D-9); DEMO.md Beat 3 is guarded (pre-seeded fixture
+  Nurse A carries the beat, one spoken sentence acknowledges the skip). Try one
+  alternate first (NC BON, or a MyLicense-platform state such as NJ) before
+  committing to fixture-only.
+
+**Build-day verification (fill in at Step 4):** target URL actually scraped,
+whether `data.rawHtml` contained real license fields, `data.metadata.statusCode`,
+whether `proxy:"auto"` was needed, and the pass/fail call. If fail → which
+alternate was tried and the final decision.
+
+**Touches:** `convex/firecrawl.ts` (allowlist = `search.dca.ca.gov`), `.env.example`
+(`BOARD_HOST_ALLOWLIST`), `fixtures/`, DEMO.md Beat 3, PRD §0, TASKS Step 4.
+
+---
+
+## D-5 — Staleness threshold value — LOCKED (values tunable)
+
+**Decision:** `staleness_threshold` drives ⚪ Unconfirmed-on-age. Default **7
+days** in live mode, **20 seconds** in demo mode (so the compressed timeline can
+show a badge going stale). Single constant in `convex/badge.ts`, overridable via
+`settings`.
+
+**Touches:** `convex/badge.ts`, `convex/demo.ts`, PRD §4.
+
+---
+
+## D-6 — Snapshot write + status gate are ONE atomic mutation — LOCKED
+
+**Gap (final-review):** the earlier draft split `persistSnapshot` (Step 4) and
+`applyGate` (Step 7) into two mutations. Between them, a query could read a
+`conflict` snapshot **before** its `mismatch_case` existed — a race that silently
+reproduces the exact failure mode Attestor exists to catch (a bad status visible
+as if trusted).
+
+**Decision:** one Convex mutation, **`commitFetchResult`**. In a single
+serializable transaction it: reads the prior confirmed snapshot, runs the pure
+`diff` / `bind_identity` / `check_privilege`, `db.insert`s the snapshot with its
+final `disposition`, and applies the gate — either flip
+`current_confirmed_snapshot_id`, or `create_mismatch_case` + set `open_case_id` +
+`ctx.scheduler.runAfter(0, sendAlert)` — plus all four `audit_events` rows. The
+action `runForLicense` performs only the non-deterministic edges (Firecrawl,
+OpenAI, `ctx.storage.store`) and hands plain values to the mutation. Invariant
+**I9**; metric **M8** (must be 0); **AC11**.
+
+**Touches:** `convex/commit.ts`, `convex/loop.ts`, PRD §0/§2/§5, Steps 3–7,
+ARCHITECTURE §4/§6/§7, TESTING `atomic-gate.test.ts`.
+
+---
+
+## D-7 — A rate-limited fetch is a recorded state, never a silent skip — LOCKED
+
+**Gap (final-review):** Firecrawl free tier = 20 req/min. A fan-out wider than the
+cap would 429 some licenses; silently skipping + retrying next sweep with no row
+reproduces the "board outage treated as no change" failure.
+
+**Decision:**
+1. `runSweep` **staggers** the fan-out —
+   `ctx.scheduler.runAfter(i * spacingMs, …)` — sized to ≤ ~15 fetches/min in
+   live mode.
+2. New `fetch_status` value **`rate_limited`**. A 429, after **one** bounded
+   in-action retry honouring `Retry-After` (~3 s cap), writes its own snapshot:
+   `fetch_status:"rate_limited"`, `fetch_http_code:429`,
+   `disposition:"unconfirmed"`.
+3. The license is retried on the **next sweep** (its latest snapshot ≠ `ok`); the
+   retry snapshot carries **`retry_of_snapshot_id`** pointing at the 429 row, so
+   the timeline links the dots.
+
+Metric **M2** (snapshots / fetch attempts, incl. 429) must be 100%; **AC12**;
+correctness rule 6.
+
+**Touches:** `convex/sweep.ts`, `convex/firecrawl.ts`, `convex/schema.ts`
+(`fetch_status`, `fetch_http_code`, `retry_of_snapshot_id`), PRD §0/§2/§4/§5,
+Steps 3–4, TESTING `rate-limit-recorded.test.ts`.
+
+---
+
+## D-8 — Raw HTML lives in Convex file storage, not inline on the snapshot — LOCKED
+
+**Gap (final-review):** Convex caps a single document at ~1 MiB. Untrusted,
+unbounded board `rawHtml` inline on every snapshot risks the ceiling and bloats
+reactive query payloads under the compressed demo schedule.
+
+**Decision (option a):** `runForLicense` writes the full verbatim payload to
+Convex **file storage** (`ctx.storage.store`). The snapshot document keeps:
+`raw_payload_storage_id: v.id("_storage")`, `raw_payload_excerpt` (≤ 4096 chars,
+inline, for instant timeline rendering), `raw_payload_sha256` (over the **full**
+payload), `raw_payload_bytes`. Fixtures take the same path so live and demo code
+are byte-identical. An orphan blob (action stored it, mutation then threw) is
+unreferenced, invisible to every query, and swept — no invariant broken.
+
+**Rejected — option b** (inline with a size cap): the ceiling risk is real, file
+storage is the documented mechanism, and the excerpt already covers fast
+rendering.
+
+Metric **M7** re-defined (re-hash each stored blob); **AC14**.
+
+**Touches:** `convex/loop.ts`, `convex/commit.ts`, `convex/schema.ts` (snapshot
+fields), `src/components/SnapshotDrawer.tsx`, PRD §0/§4/§5, Step 4, TESTING
+`snapshots-insert-only.test.ts`.
+
+---
+
+## D-9 — Demo mode fully mocks BOTH Firecrawl and OpenAI — LOCKED
+
+**Gap (final-review):** the earlier draft mocked only Firecrawl and still
+round-tripped **live OpenAI** on every compressed tick — an avoidable flakiness
+risk in a judged run, with no upside, since the point of demo mode is
+determinism.
+
+**Decision:** `demo_mode` bypasses **both** non-deterministic edges:
+- `fetch_board_page(mode:"fixture")` returns the fixture HTML directly — **no
+  Firecrawl call** (blob still written to file storage, so that path is
+  identical).
+- `extract_license_fields(mode:"fixture", fixture_id)` returns the fixture's
+  pre-computed **golden `ExtractedFields`** with `extractor_model:"fixture-golden"`
+  — **no OpenAI call**.
+
+Everything downstream (`commitFetchResult`, diff, identity, privilege, gate,
+`create_mismatch_case`, audit rows, every query) is the live code path.
+**AgentMail sends stay real** in demo mode — deterministic, safe, and it proves
+the integration.
+
+**Live-integration proof** is a **separate, guarded** DEMO.md **Beat 3**: one
+genuine Firecrawl + OpenAI pass for Nurse A, with a pre-seeded fixture Nurse A as
+a tested fallback; never a prerequisite for beats 4–12. Development also leaves
+real `source_mode:"live"` snapshots in the deployment as standing evidence.
+
+Tests spy-assert **zero** Firecrawl/OpenAI calls while `demo_mode` is on
+(**AC13**); correctness rule 9; invariant **I7**.
+
+**Touches:** `convex/demo.ts`, `convex/firecrawl.ts`, `convex/openai.ts`,
+`src/components/DemoPanel.tsx`, PRD §2/§9/§12, Step 10, DEMO.md,
+TESTING `demo-no-live-calls.test.ts` / `demo-determinism.test.ts`.
+
+---
+
+## D-10 — Two precedence rules (final-review, pre-build) — LOCKED
+
+Neither changes the architecture; both close an ambiguity that could otherwise be
+coded inconsistently between the roster list and the detail view.
+
+### (a) Case-type priority when one fetch trips several conflicts
+
+`mismatch_cases.type` holds a single value, but one conflicting fetch can trip
+more than one kind at once (e.g. a status flip **and** a privilege violation on
+the same snapshot). `create_mismatch_case` selects the headline `type` by the
+**fixed order `identity` > `privilege` > `status`** — a wrong-person match is the
+most severe failure mode and must never be masked by a lower-severity flag.
+`detail.detected_types` records **all** detected conflict kinds, so the audit
+trail loses nothing; only the headline `type` is chosen by priority.
+`AC15`; helper `gate.pickHeadlineType`.
+
+### (b) Badge evaluation order
+
+A license can satisfy the staleness clause of ⚪ Unconfirmed **while also** having
+`open_case_id` set. `deriveBadge` evaluates in a fixed precedence —
+**🟠 Needs Review (`open_case_id != null`) is checked first**, before staleness.
+An open case always renders amber even if the license has also gone stale;
+staleness downgrades to ⚪ only when there is no open case. `AC16`; unit table in
+`badge-precedence.test.ts` includes the explicit open-case-plus-stale ⇒ 🟠 row.
+
+**Touches:** PRD §4 (badge block + table), §5 (`create_mismatch_case` +
+`mismatch_cases.detail.detected_types`), §9 (correctness rule 10), Step 1
+(`deriveBadge` truth table), Step 7 (What/Testing/DoD), AC15/AC16;
+`convex/badge.ts`, `convex/gate.ts`, ARCHITECTURE §6.
+
+---
+
+## D-11 — Cross-check audit fixes + build-day-item outcomes — PARTLY LOCKED
+
+Produced by the full artifact cross-check audit (`AUDIT.md`). Records the genuine
+inconsistencies fixed and the outcome of the two build-day verification items.
+
+### (a) Missing `settings` table + transient `licenses` fields — FIXED
+
+`convex/settings` (a one-row singleton with `demo_mode`, `staleness_threshold_ms`,
+`updated_at`) and `licenses.fixture_sequence` / `licenses.fixture_cursor` were
+referenced by PRD Step 10, `ARCHITECTURE.md`, and `TASKS.md` but were **absent
+from PRD §4's schema enumeration**, which listed 7 tables. This was a real schema
+gap, not just wording.
+**Fix:** added the `settings` table block and the two transient `licenses` fields
+to PRD §4; updated the table count from **7 → 8** in PRD Step 3, `ARCHITECTURE.md`
+§5 (module map), and `TASKS.md` Step 3. No behavioural change — the entities
+already existed in the design, they were just unlisted.
+
+### (b) Env-var name drift — FIXED
+
+- PRD Step 8's AgentMail send sketch used `INBOX_ID` and `COORDINATOR_EMAIL`;
+  every other artifact (`.env.example`, `SECURITY.md`, `TASKS.md`) uses
+  `AGENTMAIL_INBOX_ID` and `ALERT_CC`. **Fix:** PRD Step 8 now uses
+  `AGENTMAIL_INBOX_ID` / `ALERT_CC`.
+- `TASKS.md` Step 3 pseudo-code used `SWEEP_INTERVAL`; `.env.example` defines
+  `SWEEP_INTERVAL_MINUTES`. **Fix:** `TASKS.md` now uses `SWEEP_INTERVAL_MINUTES`.
+
+### (c) AC7 traceability — FIXED
+
+AC7 (append-only snapshots / M7 = 0) had test coverage
+(`snapshots-insert-only.test.ts`) and a Final-gate task, but no step-level DoD
+cited it. **Fix:** `TASKS.md` Step 7 now names AC7 / I5 / M7 in its task list and
+DoD and adds `snapshots-insert-only.test.ts` to its test list. No new test added
+— coverage already existed.
+
+### (d) Flags left as-is (not contradictions — reported in `AUDIT.md`, not fixed)
+
+- `D-1` (cron fan-out) and `D-2` (own OpenAI call vs Firecrawl `json`) have **no
+  dedicated named test** — both are structural/design decisions. `D-1` is
+  exercised implicitly by `loop-happy-path.test.ts` / `demo-determinism.test.ts`
+  (exactly one `runForLicense` per license per sweep); `D-2` is exercised
+  implicitly by the per-fixture golden tests (extraction is a separate,
+  independently mocked stage). Left unaddressed per audit instruction ("flag,
+  don't silently add a test"). If the reviewer wants explicit coverage, add
+  `fanout-one-per-license.test.ts` and a static assert that `firecrawl.ts`
+  requests only `formats:["rawHtml"]`.
+- `ARCHITECTURE.md` §6 anchor table enumerates `I1–I9` + `D-10a/b`; `D-1`–`D-9`
+  appear inline in §2–§8 as mechanisms but not all as an explicit `D-N` token in
+  that table. Mechanism coverage is complete; tabular tagging is not. Left as-is.
+- `.env.example` contains `FIRECRAWL_BASE_URL`, `AGENTMAIL_BASE_URL`, and
+  `DEMO_MODE_DEFAULT`, which no other artifact references **by name** — they are
+  legitimate config/bootstrap knobs (base-URL override for self-hosting; initial
+  demo-mode state written into the `settings` singleton on first deploy). Not
+  removed.
+- PRD §5 keeps the brief's snake_case tool name `send_alert(case_id)` in the
+  signature block while every implementation reference (PRD §5 orchestration
+  list, §2 diagram, `ARCHITECTURE.md`, `TASKS.md`, `TESTING.md`) uses `sendAlert`.
+  Cosmetic; the params match. Left as-is.
+
+### (e) D-3 — OpenAI model verification — LOCKED (doc-verified; live `GET /v1/models` not runnable here)
+
+The audit could **not** run `GET https://api.openai.com/v1/models` — there is no
+`OPENAI_API_KEY` in this environment (only `.env.example` placeholders).
+Verified instead against official docs
+(`developers.openai.com/api/docs/models/gpt-4.1-mini`, retrieved 2026-09-10):
+
+| Fact | Verified value |
+|---|---|
+| Model id `gpt-4.1-mini` exists as an API model | **yes** |
+| Structured Outputs (`json_schema`, `strict:true`) | **supported** — `structured_outputs` listed among the model's features; corroborated by third-party sources (json_schema in `response_format`) |
+| Context window | 1,047,576 tokens |
+| Max output | 32,768 tokens |
+| Knowledge cutoff | 2024-06-01 |
+| Standard price | **$0.40 / 1M input, $1.60 / 1M output** (model page + Artificial Analysis + OpenRouter + Bifrost all agree); cached input $0.10 / 1M |
+| Fallback `gpt-4o-2024-08-06` | exists; Structured Outputs supported since that snapshot; ~$3.75/1M in, ~$15.00/1M out |
+
+**Caveat:** one read of the pricing page returned `$0.80 / $3.20` for
+`gpt-4.1-mini` — inconsistent with every other source and likely a
+priority/realtime-tier row or a summariser misread. Eyeball the pricing page once
+with account access on build day; it does not change the model choice.
+
+**Status:** `OPENAI_MODEL=gpt-4.1-mini` is **LOCKED** on model id + Structured
+Outputs capability (doc-verified). `bootModelCheck()` (`GET /v1/models` on first
+run, fallback to `gpt-4o-2024-08-06`) remains the runtime guard and is the point
+at which the live call finally happens.
+
+### (f) D-4 — Live board target — LOCKED to CA DCA BRN (reviewer-approved; live scrape verified build-day at Step 4)
+
+The audit could **not** run a real Firecrawl `/v2/scrape` — no `FIRECRAWL_API_KEY`
+in this environment. Unauthenticated probes of candidate boards:
+
+| Board | URL | Unauthenticated GET result |
+|---|---|---|
+| California DCA license search | `https://search.dca.ca.gov/` | SSR search form, **no login**, includes Board of Registered Nursing; documents status words (current / expired / suspended / revoked). **Results page renders rows client-side (JS)** — needs Firecrawl `proxy:"auto"` + `waitFor` |
+| NC Board of Nursing verification | `https://portal.ncbon.com/verification/search.aspx` | **403 Forbidden** to a plain client (bot protection) |
+| Illinois IDFPR lookup | `https://online-dfpr.micropact.com/lookup/licenselookup.aspx` | **405** to a plain GET (expects a specific method/headers) |
+| Washington DOH credential search | `https://fortress.wa.gov/doh/providercredentialsearch/` | DNS timeout from this environment |
+| NY Office of the Professions | `https://www.op.nysed.gov/verification-search` | 301 → `eservices.nysed.gov` (redirect chain, not chased) |
+
+None can be confirmed as clean server-rendered result HTML without running
+Firecrawl. This is **expected** and is exactly why fixture-driven demo mode is
+mandatory (D-9). Firecrawl's `proxy:"auto"` + `waitFor` is built for JS-rendered
+and bot-blocked pages, but that can only be proven with a key.
+
+**Recommended primary candidate:** **California DCA — Board of Registered
+Nursing** via `search.dca.ca.gov` (public, no login, nursing board present,
+status vocabulary documented). To be confirmed on build day with **one real
+Firecrawl `/v2/scrape` (`formats:["rawHtml"]`, `proxy:"auto"`, `waitFor:2500`)**
+against a real results/detail URL.
+
+**Fallback (already designed):** if no board returns usable HTML via Firecrawl
+within the timeline, DEMO.md Beat 3's guarded path stands — the live pass is
+skipped with one spoken sentence and the pre-seeded fixture Nurse A carries the
+beat. `source_mode:"live"` snapshots captured during any successful dev run are
+left in the deployment as standing evidence.
+
+**Status:** **LOCKED** (reviewer-approved 2026-09-10). Live-mode target =
+**California DCA — Board of Registered Nursing** (`search.dca.ca.gov`),
+`BOARD_HOST_ALLOWLIST=search.dca.ca.gov`. This is a design decision; the real
+`POST /v2/scrape` verification is deferred to **build day, Step 4**, with real
+Firecrawl credentials, and is recorded in the *Running verification log* row
+"D-4 live scrape — CA DCA BRN". The guarded fixture fallback (D-9 / DEMO Beat 3)
+covers a Step-4 scrape failure. Not a blocking item for starting the build.
+
+---
+
+## Running verification log (fill in on build day)
+
+| Item | Checked? | Result |
+|---|---|---|
+| Convex `crons.interval` signature + `crons.ts` default export | ☐ | |
+| Convex `ctx.scheduler.runAfter` from mutation is transactional | ☐ | |
+| `@convex-dev/static-hosting` serves SPA at `<deployment>.convex.site` | ☐ | |
+| Firecrawl `POST /v2/scrape` body: `formats:["rawHtml"]`, `proxy:"auto"`, `waitFor` | ☐ | |
+| Firecrawl 429 shape + `Retry-After` header present | ☐ | |
+| OpenAI Structured Outputs endpoint (`/v1/responses` `text.format` vs `/v1/chat/completions` `response_format`) + exact model id + price | ☐ | |
+| AgentMail create-inbox + `messages/send` path, field names, attachment shape | ☐ | |
+| Convex document size limit (confirm ~1 MiB) + `ctx.storage` API | ☐ | |
+| **D-3 pricing** — `gpt-4.1-mini` input/output $/1M against `platform.openai.com` console (resolve $0.40/$1.60 vs $0.80/$3.20 — B-2, non-blocking) | ☐ | |
+| **D-3 live** — `GET /v1/models` returns `gpt-4.1-mini` (else `bootModelCheck` falls back to `gpt-4o-2024-08-06`) | ☐ | |
+| **D-4 live scrape — CA DCA BRN** — real `POST /v2/scrape` (`formats:["rawHtml"]`, `proxy:"auto"`, `waitFor:2500`) vs a `search.dca.ca.gov` results/detail URL returns real license fields, not a block/CAPTCHA/shell; note `statusCode`, whether `proxy:"auto"` was needed, pass/fail; on fail → alternate tried + final call | ☐ | |

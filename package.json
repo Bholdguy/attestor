@@ -1,0 +1,35 @@
+{
+  "name": "attestor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Attestor — a License Trust Supervisor (Convex All Gas Hackathon)",
+  "scripts": {
+    "dev": "vite",
+    "dev:backend": "convex dev",
+    "build": "tsc -b && vite build && node scripts/no-secret-in-client.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:static": "node scripts/static-checks.mjs",
+    "lint": "tsc -b --noEmit",
+    "fixtures:regold": "node scripts/regold.mjs"
+  },
+  "dependencies": {
+    "convex": "^1.17.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@convex-dev/static-hosting": "^0.2.0",
+    "@edge-runtime/vm": "^4.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/ui": "^3.2.7",
+    "convex-test": "^0.0.35",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^3.2.7"
+  }
+}
