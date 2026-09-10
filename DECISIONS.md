@@ -573,6 +573,34 @@ touch OpenAI).
 
 ---
 
+## D-17 — an open case gates confirmation (a later agreeing fetch does not auto-confirm) — LOCKED (Step 7)
+
+**Ambiguity:** the plan (TASKS Step 7, PRD §2 gate) says "all agree/valid + ok +
+confidence ≥ medium ⇒ confirmed, flip pointer" and separately I4 says a case
+clears "only by an explicit human action". It does not spell out what happens
+when a license **already has an open case** and a *new* fetch would otherwise
+confirm (e.g. the board flipped to Expired → case opened → board flips back to
+Active before a human resolves).
+
+**Decision:** while `licenses.open_case_id != null`, the gate **cannot produce
+`confirmed`**. `deriveDisposition` takes a `caseAlreadyOpen` input; a
+would-be-`confirmed` fetch in that state is recorded `disposition:"unconfirmed"`
+with the pointer **frozen** at its pre-case value until a human runs
+`resolveCase`. A would-be-`conflict` fetch still reports `conflict`, but
+`create_mismatch_case` is idempotent (returns `created:false`) so no second case
+and no second alert (I8). Rationale: the open case means "a human has not yet
+accepted the board's new reality"; silently re-confirming from the loop would be
+a soft auto-resolution and could ping-pong the pointer. The snapshot is still
+appended (I5) with its true `diff_result.agrees` (so "never a false conflict"
+holds — an agreeing re-fetch shows `agrees:true`, just not `confirmed`).
+
+**Touches:** `convex/gate.ts` (`caseAlreadyOpen`), `convex/commit.ts`,
+`tests/unit/gate.test.ts`, `tests/convex/extraction-and-diff.test.ts`,
+`tests/convex/no-auto-resolve.test.ts`. Consistent with I4 / I5 / D-6;
+no schema change.
+
+---
+
 ## Running verification log (fill in on build day)
 
 | Item | Checked? | Result |
