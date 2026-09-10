@@ -22,6 +22,7 @@ import type * as loop from "../loop.js";
 import type * as openai from "../openai.js";
 import type * as read from "../read.js";
 import type * as roster from "../roster.js";
+import type * as setup from "../setup.js";
 import type * as sweep from "../sweep.js";
 import type * as timeline from "../timeline.js";
 
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   openai: typeof openai;
   read: typeof read;
   roster: typeof roster;
+  setup: typeof setup;
   sweep: typeof sweep;
   timeline: typeof timeline;
 }>;
