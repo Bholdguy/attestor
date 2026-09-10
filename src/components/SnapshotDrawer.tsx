@@ -1,6 +1,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+// (badge helpers live in ../lib/badge — imported where badges render)
 
 // Step 4 — raw excerpt (as ESCAPED text, never rendered HTML — SECURITY §3),
 // "view full raw HTML" (off-origin storage URL), and fetch provenance. Steps 5–7

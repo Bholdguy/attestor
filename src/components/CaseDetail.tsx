@@ -14,9 +14,11 @@ function fmt(ts: number | null | undefined) {
 export function CaseDetail({
   caseId,
   onClose,
+  onCompare,
 }: {
   caseId: Id<"mismatch_cases">;
   onClose: () => void;
+  onCompare?: (a: Id<"snapshots">, b: Id<"snapshots">) => void;
 }) {
   const c = useQuery(api.cases.getCase, { caseId });
   const resolveCase = useMutation(api.cases.resolveCase);
@@ -88,6 +90,14 @@ export function CaseDetail({
             <dd style={{ fontFamily: "ui-monospace, monospace", fontSize: 11 }}>{c.snapshot_a_id}</dd>
             <dt>snapshot_b</dt>
             <dd style={{ fontFamily: "ui-monospace, monospace", fontSize: 11 }}>{c.snapshot_b_id}</dd>
+            <dt />
+            <dd>
+              {onCompare && (
+                <button onClick={() => onCompare(c.snapshot_a_id, c.snapshot_b_id)}>
+                  Compare A vs B
+                </button>
+              )}
+            </dd>
             {c.alert ? (
               <>
                 <dt>alert</dt>

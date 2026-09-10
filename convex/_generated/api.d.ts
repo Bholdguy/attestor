@@ -24,6 +24,7 @@ import type * as health from "../health.js";
 import type * as identity from "../identity.js";
 import type * as lib_hash from "../lib/hash.js";
 import type * as loop from "../loop.js";
+import type * as metrics from "../metrics.js";
 import type * as openai from "../openai.js";
 import type * as privilege from "../privilege.js";
 import type * as read from "../read.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   identity: typeof identity;
   "lib/hash": typeof lib_hash;
   loop: typeof loop;
+  metrics: typeof metrics;
   openai: typeof openai;
   privilege: typeof privilege;
   read: typeof read;
