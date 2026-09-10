@@ -388,6 +388,40 @@ covers a Step-4 scrape failure. Not a blocking item for starting the build.
 
 ---
 
+## D-12 — `@convex-dev/static-hosting` 0.2.x deploy is its own command, not `npx convex deploy` — LOCKED (build reality)
+
+**Planning assumed (ARCHITECTURE.md §2, TASKS Step 0 DoD, PRD §0/§12):** a
+*single* `npx convex deploy` "builds `dist/`, pushes backend, uploads static
+assets" and serves the frontend at `https://<deployment>.convex.site`.
+
+**Build reality (2026-09-10, `@convex-dev/static-hosting@0.2.1` installed at
+Step 0):** that one-command behaviour was the **0.1.x** integration. In 0.2.x the
+component ships its own CLI and the single command is
+**`npx @convex-dev/static-hosting deploy`**, which (1) builds the frontend with
+the production `VITE_CONVEX_URL`, (2) runs `npx convex deploy` for the backend,
+(3) uploads `dist/` through the Convex CLI's authenticated session. Plain
+`npx convex deploy` alone pushes the backend but does **not** upload the
+frontend. Registration also changed: component-owned root mode is
+`defineApp({ httpPrefix: "/api" })` + `app.use(staticHosting, { httpPrefix: "/" })`.
+
+**Decision:**
+- `package.json` gains `"deploy": "npx @convex-dev/static-hosting deploy"` (the
+  single command for a full deploy) and
+  `"deploy:smoke": "npx @convex-dev/static-hosting upload --build"` (hosted smoke
+  test against the dev deployment before a prod deploy).
+- `convex/convex.config.ts` uses component-owned root mode. Attestor has no
+  webhook/auth HTTP routes (AgentMail is send-only, SECURITY.md §3), so nothing
+  needs to stay at `/`.
+- Everywhere the plan says "single `npx convex deploy`", read "single
+  `npm run deploy`". No architectural change: still one command, one deploy
+  target, frontend + backend on `https://<deployment>.convex.site`, public repo,
+  no localhost. AC10 is unaffected.
+
+**Touches:** `package.json` (scripts), `convex/convex.config.ts`, ARCHITECTURE.md
+§2 (command name), TASKS Step 0 + Final gate (`npm run deploy`), PRD §12 row.
+
+---
+
 ## Running verification log (fill in on build day)
 
 | Item | Checked? | Result |
