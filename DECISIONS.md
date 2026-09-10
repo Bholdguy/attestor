@@ -426,9 +426,9 @@ frontend. Registration also changed: component-owned root mode is
 
 | Item | Checked? | Result |
 |---|---|---|
-| Convex `crons.interval` signature + `crons.ts` default export | ☐ | |
-| Convex `ctx.scheduler.runAfter` from mutation is transactional | ☐ | |
-| `@convex-dev/static-hosting` serves SPA at `<deployment>.convex.site` | ☐ | |
+| Convex `crons.interval` signature + `crons.ts` default export | ☑ | Step 3 — `cronJobs()` from `convex/server`, `crons.interval("sweep", { minutes }, internal.sweep.runSweep, {})`, `export default crons`. Pushed clean to `brazen-snail-826` (Convex 1.45). |
+| Convex `ctx.scheduler.runAfter` from mutation is transactional | ☑ | Step 3 — `addWorker` schedules `runForLicense` after its inserts; `loop-happy-path.test.ts` shows it fires exactly once, and the "bad state code" test shows the whole mutation (inserts + schedule) rolls back on a thrown `ConvexError` (no row, no scheduled fn). |
+| `@convex-dev/static-hosting` serves SPA at `<deployment>.convex.site` | ◐ | Step 0/3 — component **installed** at push (`✔ Installed component staticHosting`), 0.2.x API (`defineApp({httpPrefix:"/api"})` + `app.use(staticHosting,{httpPrefix:"/"})`, see D-12). Actual serving at `.convex.site` verified on first `npm run deploy` (deferred, pending go-ahead). |
 | Firecrawl `POST /v2/scrape` body: `formats:["rawHtml"]`, `proxy:"auto"`, `waitFor` | ☐ | |
 | Firecrawl 429 shape + `Retry-After` header present | ☐ | |
 | OpenAI Structured Outputs endpoint (`/v1/responses` `text.format` vs `/v1/chat/completions` `response_format`) + exact model id + price | ☐ | |
