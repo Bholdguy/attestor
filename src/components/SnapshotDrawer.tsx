@@ -139,6 +139,66 @@ export function SnapshotDrawer({
             </>
           )}
 
+          {snap.identity_result && (
+            <>
+              <h4 style={{ marginBottom: 4 }}>Identity (number + registered name — never name alone)</h4>
+              <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>match_confidence</td>
+                    <td style={{ padding: "2px 8px" }}>
+                      <strong>{snap.identity_result.match_confidence}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>mismatch_reason</td>
+                    <td style={{ padding: "2px 8px" }}>{snap.identity_result.mismatch_reason}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>number_matches</td>
+                    <td style={{ padding: "2px 8px" }}>{String(snap.identity_result.number_matches)}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>name_similarity</td>
+                    <td style={{ padding: "2px 8px" }}>
+                      {snap.identity_result.registered_name_similarity.toFixed(2)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {snap.privilege_result && (
+            <>
+              <h4 style={{ marginBottom: 4 }}>Privilege (checked against the assignment state)</h4>
+              <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>valid</td>
+                    <td style={{ padding: "2px 8px" }}>
+                      <strong style={{ color: snap.privilege_result.valid ? "#0a7d28" : "#b00020" }}>
+                        {String(snap.privilege_result.valid)}
+                      </strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>reason</td>
+                    <td style={{ padding: "2px 8px" }}>{snap.privilege_result.reason}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>assignment_state</td>
+                    <td style={{ padding: "2px 8px" }}>{snap.privilege_result.assignment_state}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "2px 8px", color: "#666" }}>compact_member</td>
+                    <td style={{ padding: "2px 8px" }}>{String(snap.privilege_result.compact_member)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+
           <h4 style={{ marginBottom: 4 }}>Raw payload excerpt (first 4 KB, as text)</h4>
           <pre
             style={{

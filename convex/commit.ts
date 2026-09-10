@@ -16,6 +16,8 @@ import { v, ConvexError } from "convex/values";
 import { extractedFields, fetchStatus, disposition as dispositionV } from "./contract";
 import type { Doc } from "./_generated/dataModel";
 import { diff_snapshot } from "./diff";
+import { bind_identity, identityBlocksConfirm } from "./identity";
+import { check_privilege, privilegeBlocksConfirm } from "./privilege";
 
 export const commitFetchResult = internalMutation({
   args: {
@@ -51,8 +53,17 @@ export const commitFetchResult = internalMutation({
       ? await ctx.db.get(license.current_confirmed_snapshot_id)
       : null;
 
-    // ── pure reasoning — runs INSIDE this transaction (D-6) ─────────────────
-    // diff vs the prior *confirmed* snapshot's fields (Step 5).
+    // Worker (registered name) + active assignment (assignment state) — the
+    // identity + privilege check inputs (I2 / I3). Read in the SAME txn.
+    const worker = await ctx.db.get(license.worker_id);
+    const assignment = await ctx.db
+      .query("assignments")
+      .withIndex("by_worker", (q) => q.eq("worker_id", license.worker_id))
+      .filter((q) => q.eq(q.field("active"), true))
+      .first();
+    const assignmentState = assignment?.assignment_state ?? license.issuing_state;
+
+    // ── pure reasoning — ALL runs INSIDE this transaction (D-6) ─────────────
     const diff_result =
       args.extracted_fields != null
         ? diff_snapshot(
@@ -61,21 +72,44 @@ export const commitFetchResult = internalMutation({
             priorConfirmed?._id ?? null,
           )
         : null;
-    // identity + privilege binding land in Step 6.
-    const identity_result = null;
-    const privilege_result = null;
+
+    // I2 — number + registered name, never name-string alone.
+    const identity_result =
+      args.extracted_fields != null
+        ? bind_identity(
+            {
+              license_number: license.license_number,
+              name_registered: worker?.name_registered ?? "",
+            },
+            args.extracted_fields,
+          )
+        : null;
+
+    // I3 — extracted privilege type vs the worker's ACTUAL assignment state.
+    const privilege_result =
+      args.extracted_fields != null
+        ? check_privilege(
+            args.extracted_fields.privilege_type,
+            assignmentState,
+            args.extracted_fields.primary_state_of_residence,
+            license.issuing_state,
+          )
+        : null;
 
     // ── GATE (Step 7 completes: disagreement/invalid → conflict + case + alert) ─
     const fetchOk = args.fetch_status === "ok";
     const confidenceLow = args.extracted_fields?.extraction_confidence === "low";
     const diffDisagrees = diff_result != null && !diff_result.agrees;
+    const identityBad = identity_result != null && identityBlocksConfirm(identity_result);
+    const privilegeBad = privilege_result != null && privilegeBlocksConfirm(privilege_result);
 
     let dispo: Doc<"snapshots">["disposition"];
     if (!fetchOk || args.extracted_fields == null || confidenceLow) {
       dispo = "unconfirmed"; // I6 fail-closed
-    } else if (diffDisagrees) {
-      // Step 7 upgrades this branch to disposition:"conflict" + create_mismatch_case.
-      // Until then: never a silent pass — a disagreeing fetch does NOT confirm.
+    } else if (diffDisagrees || identityBad || privilegeBad) {
+      // Step 7 upgrades this branch to disposition:"conflict" + create_mismatch_case
+      // (with D-10a headline-type priority identity > privilege > status).
+      // Until then: never a silent pass — a disagreeing/invalid fetch does NOT confirm.
       dispo = "unconfirmed";
     } else {
       dispo = "confirmed";
@@ -171,7 +205,15 @@ export const commitFetchResult = internalMutation({
       ...base,
       stage: "gate",
       outcome: dispo,
-      message: `gate → ${dispo}`,
+      message:
+        `gate → ${dispo}` +
+        (identity_result
+          ? ` · identity ${identity_result.match_confidence}` +
+            (identity_result.mismatch_reason !== "none" ? `(${identity_result.mismatch_reason})` : "")
+          : "") +
+        (privilege_result
+          ? ` · privilege ${privilege_result.valid ? "valid" : "invalid"}(${privilege_result.reason})`
+          : ""),
     });
 
     return { snapshot_id: snapshotId, disposition: dispo, case_id, alert_scheduled };
