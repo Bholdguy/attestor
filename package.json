@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "test:static": "node scripts/static-checks.mjs",
     "lint": "tsc -b --noEmit",
+    "fixtures:sync": "node scripts/sync-fixtures.mjs",
     "fixtures:regold": "node scripts/regold.mjs"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@convex-dev/static-hosting": "^0.2.0",
     "@edge-runtime/vm": "^4.0.0",
+    "@types/node": "^22.20.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

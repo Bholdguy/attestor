@@ -14,8 +14,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["vite/client", "vitest/globals"]
+    "types": ["vite/client", "vitest/globals", "node"]
   },
-  "include": ["src", "fixtures", "tests"],
+  "include": ["src", "tests"],
   "exclude": ["convex"]
 }
