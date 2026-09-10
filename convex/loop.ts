@@ -12,6 +12,8 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { sha256Hex, utf8Bytes, excerpt } from "./lib/hash";
 import { fetch_board_page, type FetchBoardResult } from "./firecrawl";
+import { extract_license_fields } from "./openai";
+import type { ExtractedFields, FetchStatus } from "./contract";
 
 export const runForLicense = internalAction({
   args: { licenseId: v.id("licenses") },
@@ -62,6 +64,35 @@ export const runForLicense = internalAction({
       raw_payload_storage_id = await ctx.storage.store(blob);
     }
 
+    // EXTRACT — the only OpenAI call (D-2). Only when the fetch itself succeeded.
+    // A failed/refused extraction maps to a non-"ok" fetch_status so the gate
+    // fails closed (I6); the FETCH stage is unaffected and still has its snapshot.
+    let extracted_fields: ExtractedFields | null = null;
+    let extractor_model: string | null = null;
+    let extractor_raw_response: string | null = null;
+    let fetch_status: FetchStatus = result.fetch_status;
+
+    if (result.fetch_status === "ok") {
+      const fixtureId =
+        result.source_mode === "fixture"
+          ? result.source_url.replace(/^fixture:\/\//, "")
+          : undefined;
+      const outcome = await extract_license_fields(
+        result.raw_html,
+        result.source_mode,
+        fixtureId,
+      );
+      if (outcome.ok) {
+        extracted_fields = outcome.fields;
+        extractor_model = outcome.model;
+        extractor_raw_response = outcome.raw_response;
+      } else {
+        extractor_model = outcome.model;
+        extractor_raw_response = outcome.raw_response;
+        fetch_status = outcome.reason; // "extraction_failed" | "extraction_refused"
+      }
+    }
+
     await ctx.runMutation(internal.commit.commitFetchResult, {
       license_id: licenseId,
       fetched_at: result.fetched_at,
@@ -71,11 +102,11 @@ export const runForLicense = internalAction({
       raw_payload_excerpt: result.raw_payload_excerpt,
       raw_payload_sha256: result.raw_payload_sha256,
       raw_payload_bytes: result.raw_payload_bytes,
-      fetch_status: result.fetch_status,
+      fetch_status,
       fetch_http_code: result.fetch_http_code,
-      extracted_fields: null, // Step 5: extract_license_fields
-      extractor_model: null,
-      extractor_raw_response: null,
+      extracted_fields,
+      extractor_model,
+      extractor_raw_response,
       retry_of_snapshot_id,
     });
     return null;

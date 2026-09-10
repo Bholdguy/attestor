@@ -27,6 +27,7 @@ describe("Step 4 — rate-limited fetch is recorded and retried (D-7 / AC12)", (
     vi.useFakeTimers();
     vi.stubEnv("FIRECRAWL_API_KEY", "fc-test-key");
     vi.stubEnv("BOARD_HOST_ALLOWLIST", "search.dca.ca.gov");
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-key");
   });
   afterEach(() => {
     vi.useRealTimers();

@@ -26,6 +26,7 @@ describe("Step 4 — blocked / timeout / error fetch is a recorded snapshot (AC9
     vi.useFakeTimers();
     vi.stubEnv("FIRECRAWL_API_KEY", "fc-test-key");
     vi.stubEnv("BOARD_HOST_ALLOWLIST", "search.dca.ca.gov");
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-key");
   });
   afterEach(() => {
     vi.useRealTimers();

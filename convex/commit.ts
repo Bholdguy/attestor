@@ -15,6 +15,7 @@ import { internalMutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { extractedFields, fetchStatus, disposition as dispositionV } from "./contract";
 import type { Doc } from "./_generated/dataModel";
+import { diff_snapshot } from "./diff";
 
 export const commitFetchResult = internalMutation({
   args: {
@@ -50,14 +51,35 @@ export const commitFetchResult = internalMutation({
       ? await ctx.db.get(license.current_confirmed_snapshot_id)
       : null;
 
-    // ── pure reasoning (Steps 5–6 populate these; all run in THIS txn) ───────
-    const diff_result = null;
+    // ── pure reasoning — runs INSIDE this transaction (D-6) ─────────────────
+    // diff vs the prior *confirmed* snapshot's fields (Step 5).
+    const diff_result =
+      args.extracted_fields != null
+        ? diff_snapshot(
+            args.extracted_fields,
+            priorConfirmed?.extracted_fields ?? null,
+            priorConfirmed?._id ?? null,
+          )
+        : null;
+    // identity + privilege binding land in Step 6.
     const identity_result = null;
     const privilege_result = null;
 
-    // ── GATE (Step 7 completes: conflict → case + alert; low/!ok → unconfirmed) ─
+    // ── GATE (Step 7 completes: disagreement/invalid → conflict + case + alert) ─
     const fetchOk = args.fetch_status === "ok";
-    const dispo: Doc<"snapshots">["disposition"] = fetchOk ? "confirmed" : "unconfirmed";
+    const confidenceLow = args.extracted_fields?.extraction_confidence === "low";
+    const diffDisagrees = diff_result != null && !diff_result.agrees;
+
+    let dispo: Doc<"snapshots">["disposition"];
+    if (!fetchOk || args.extracted_fields == null || confidenceLow) {
+      dispo = "unconfirmed"; // I6 fail-closed
+    } else if (diffDisagrees) {
+      // Step 7 upgrades this branch to disposition:"conflict" + create_mismatch_case.
+      // Until then: never a silent pass — a disagreeing fetch does NOT confirm.
+      dispo = "unconfirmed";
+    } else {
+      dispo = "confirmed";
+    }
 
     // ── the ONE snapshot insert (append-only, I5) ───────────────────────────
     const snapshotId = await ctx.db.insert("snapshots", {
@@ -113,18 +135,37 @@ export const commitFetchResult = internalMutation({
     await ctx.db.insert("audit_events", {
       ...base,
       stage: "extract",
-      outcome: args.extracted_fields ? "ok" : "skipped",
+      outcome: args.extracted_fields
+        ? "ok"
+        : args.fetch_status === "extraction_refused"
+          ? "refused"
+          : args.fetch_status === "extraction_failed"
+            ? "failed"
+            : "skipped",
       message: args.extractor_model
-        ? `extracted via ${args.extractor_model}`
-        : "no extraction (skeleton / non-ok fetch)",
+        ? `extracted via ${args.extractor_model}` +
+          (args.extracted_fields ? ` · confidence ${args.extracted_fields.extraction_confidence}` : "")
+        : "no extraction (non-ok fetch)",
     });
     await ctx.db.insert("audit_events", {
       ...base,
       stage: "diff",
-      outcome: priorConfirmed ? "pending" : "no_prior",
-      message: priorConfirmed
-        ? `diff vs confirmed ${priorConfirmed._id} (wired in Step 5)`
-        : "first snapshot — nothing to diff",
+      outcome: !diff_result
+        ? "skipped"
+        : diff_result.compared_snapshot_id == null
+          ? "no_prior"
+          : diff_result.agrees
+            ? "agrees"
+            : `conflict:${diff_result.conflicts.map((c) => c.field).join(",")}`,
+      message: !diff_result
+        ? "no extraction to diff"
+        : diff_result.compared_snapshot_id == null
+          ? "first snapshot — nothing to diff"
+          : diff_result.agrees
+            ? `diff vs confirmed ${diff_result.compared_snapshot_id}: agrees`
+            : `diff vs confirmed ${diff_result.compared_snapshot_id}: ${diff_result.conflicts
+                .map((c) => `${c.field} ${c.prior}→${c.current}`)
+                .join("; ")}`,
     });
     await ctx.db.insert("audit_events", {
       ...base,

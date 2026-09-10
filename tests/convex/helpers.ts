@@ -29,12 +29,47 @@ export function abortError(): Error {
   return Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
 }
 
-/** Stub global fetch with a queue of responses/behaviours, one per call. */
+const GENERIC_EXTRACTED_FIELDS = {
+  licensee_name: "Maria S. Gomez",
+  license_number: "RN-4471102",
+  status_word: "Active",
+  status_normalized: "active",
+  issue_date: "2019-06-14",
+  expire_date: "2026-06-30",
+  privilege_type: "single_state",
+  primary_state_of_residence: "NY",
+  extraction_confidence: "high",
+};
+
+/** OpenAI GET /v1/models response listing the given ids (default: the configured model). */
+export function openaiModelsList(ids: string[] = ["gpt-4.1-mini"]): Response {
+  return mockResponse({ status: 200, json: { data: ids.map((id) => ({ id })) } });
+}
+
+/** OpenAI chat/completions response whose message.content is JSON.stringify(fields). */
+export function openaiExtractOk(fields: unknown = GENERIC_EXTRACTED_FIELDS): Response {
+  return mockResponse({
+    status: 200,
+    json: { choices: [{ message: { content: JSON.stringify(fields), refusal: null } }] },
+  });
+}
+
+/**
+ * Stub global fetch. OpenAI endpoints (`/v1/models`, `/chat/completions`) are
+ * auto-answered with a valid model list + a successful generic extraction, so
+ * FETCH-focused tests don't have to care about the EXTRACT stage. Every other
+ * URL is served from `behaviours` (one entry per call, last entry repeats).
+ */
 export function stubFetchSequence(
   behaviours: Array<Response | Error | "hang">,
+  openai?: { models?: string[]; extract?: unknown },
 ): ReturnType<typeof vi.fn> {
   let i = 0;
-  const fn = vi.fn((_url: string, init?: { signal?: AbortSignal }) => {
+  const fn = vi.fn((url: string, init?: { signal?: AbortSignal }) => {
+    const u = String(url);
+    if (u.endsWith("/models")) return Promise.resolve(openaiModelsList(openai?.models));
+    if (u.includes("/chat/completions")) return Promise.resolve(openaiExtractOk(openai?.extract));
+
     const b = behaviours[Math.min(i, behaviours.length - 1)];
     i++;
     if (b === "hang") {

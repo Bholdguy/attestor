@@ -9,14 +9,17 @@
  */
 
 import type * as badge from "../badge.js";
+import type * as boot from "../boot.js";
 import type * as commit from "../commit.js";
 import type * as contract from "../contract.js";
 import type * as crons from "../crons.js";
+import type * as diff from "../diff.js";
 import type * as firecrawl from "../firecrawl.js";
 import type * as fixtures_index from "../fixtures/index.js";
 import type * as health from "../health.js";
 import type * as lib_hash from "../lib/hash.js";
 import type * as loop from "../loop.js";
+import type * as openai from "../openai.js";
 import type * as read from "../read.js";
 import type * as roster from "../roster.js";
 import type * as sweep from "../sweep.js";
@@ -30,14 +33,17 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   badge: typeof badge;
+  boot: typeof boot;
   commit: typeof commit;
   contract: typeof contract;
   crons: typeof crons;
+  diff: typeof diff;
   firecrawl: typeof firecrawl;
   "fixtures/index": typeof fixtures_index;
   health: typeof health;
   "lib/hash": typeof lib_hash;
   loop: typeof loop;
+  openai: typeof openai;
   read: typeof read;
   roster: typeof roster;
   sweep: typeof sweep;

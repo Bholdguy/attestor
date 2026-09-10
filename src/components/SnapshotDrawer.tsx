@@ -93,6 +93,52 @@ export function SnapshotDrawer({
             )}
           </p>
 
+          {snap.extracted_fields && (
+            <>
+              <h4 style={{ marginBottom: 4 }}>Extracted fields (OpenAI, strict JSON)</h4>
+              <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
+                <tbody>
+                  {Object.entries(snap.extracted_fields).map(([k, val]) => (
+                    <tr key={k} style={{ borderBottom: "1px solid #eee" }}>
+                      <td style={{ padding: "2px 8px", color: "#666" }}>{k}</td>
+                      <td style={{ padding: "2px 8px" }}>{val === null ? "—" : String(val)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {snap.diff_result && (
+            <>
+              <h4 style={{ marginBottom: 4 }}>Diff vs last confirmed</h4>
+              {snap.diff_result.compared_snapshot_id == null ? (
+                <p style={{ fontSize: 12, color: "#666" }}>first snapshot — nothing to diff</p>
+              ) : snap.diff_result.agrees ? (
+                <p style={{ fontSize: 12, color: "#0a7d28" }}>agrees with {snap.diff_result.compared_snapshot_id}</p>
+              ) : (
+                <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left" }}>
+                      <th style={{ padding: "2px 8px" }}>field</th>
+                      <th style={{ padding: "2px 8px" }}>prior</th>
+                      <th style={{ padding: "2px 8px" }}>current</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snap.diff_result.conflicts.map((c) => (
+                      <tr key={c.field} style={{ background: "#fff3cd" }}>
+                        <td style={{ padding: "2px 8px" }}>{c.field}</td>
+                        <td style={{ padding: "2px 8px" }}>{c.prior}</td>
+                        <td style={{ padding: "2px 8px" }}>{c.current}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
           <h4 style={{ marginBottom: 4 }}>Raw payload excerpt (first 4 KB, as text)</h4>
           <pre
             style={{
