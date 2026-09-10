@@ -11,6 +11,17 @@ dist/
 
 # convex local state
 .convex/
+# codegen IS committed (CI typechecks without a deployment) — but not the
+# Convex AI-tooling scratch dir
+convex/_generated/ai/
+
+# Convex CLI agent-tooling scaffolding (auto-installed by `npx convex dev`) —
+# regenerable, not product code
+.agents/
+.claude/skills/
+skills-lock.json
+/CLAUDE.md
+/AGENTS.md
 
 # editor / OS
 .DS_Store
