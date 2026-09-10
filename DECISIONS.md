@@ -531,6 +531,48 @@ scrape is the evidence, fixture path labelled). No implementation change.
 
 ---
 
+## D-16 — OpenAI account has no credits; live extraction blocked (pending top-up) — OPEN
+
+**Found (2026-09-11):** re-running the standing-evidence live scrape after the
+HTML-size cap, the extraction still failed — but the cause is
+`{"type":"insufficient_quota","code":"credit_balance_exhausted"}` from
+`POST /v1/chat/completions`. `GET /v1/models` is free and still works
+(`gpt-4.1-mini` resolves), so `bootModelCheck()` passes but no real extraction
+can complete.
+
+**Impact:**
+- **None on the judged demo.** Demo mode (D-9) returns golden `ExtractedFields`
+  with `extractor_model:"fixture-golden"` and makes **zero** OpenAI calls; the
+  entire A–D story runs offline.
+- **None on tests.** Every OpenAI path is mocked (`fixture-extraction.test.ts`,
+  `model-check.test.ts`, `extraction-and-diff.test.ts`, …); 254 green.
+- **Blocked:** (a) DEMO.md Beat 3's live-integration proof can show the real
+  Firecrawl scrape but not a real OpenAI extraction; (b) no standing
+  `source_mode:"live"` snapshot with real `extracted_fields` for the "OpenAI does
+  real work" claim.
+
+**Decision / action for the reviewer:** add credits at
+`platform.openai.com/settings/organization/billing`. `gpt-4.1-mini` extraction is
+~$0.02–0.05 per real board page (≈30k input tokens capped, 800 output); a few
+dollars covers development + the demo. Once topped up:
+- re-run one live pass (`roster:addWorker` with a real board URL, or unfreeze an
+  evidence license) to capture a standing live snapshot with real extracted
+  fields;
+- Beat 3 can then do the full real Firecrawl + real OpenAI pass (still guarded by
+  the pre-seeded fixture Nurse A per D-15, since the CA DCA *content* stays
+  Turnstile-gated — a live pass would extract low-confidence/`unknown` from the
+  search shell, which is honest but not a compelling demo; the fixture carries
+  Beat 3).
+
+**Status:** OPEN — no code change; a billing action on the reviewer's OpenAI
+account. Not a blocker for Steps 8–10 (AgentMail + dashboard + demo mode don't
+touch OpenAI).
+
+**Touches:** DECISIONS *Running verification log* (D-3 live row), DEMO.md Beat 3
+(same guardrail as D-15), PRD §12 "OpenAI does real work" row.
+
+---
+
 ## Running verification log (fill in on build day)
 
 | Item | Checked? | Result |
@@ -545,5 +587,5 @@ scrape is the evidence, fixture path labelled). No implementation change.
 | AgentMail create-inbox + `messages/send` path, field names, attachment shape | ☐ | |
 | Convex document size limit (confirm ~1 MiB) + `ctx.storage` API | ☐ | |
 | **D-3 pricing** — `gpt-4.1-mini` input/output $/1M against `platform.openai.com` console (resolve $0.40/$1.60 vs $0.80/$3.20 — B-2, non-blocking) | ☐ | **BD-2 (2026-09-10)** — still needs the reviewer to eyeball the console. Public docs (`openai.com/api/pricing`, retrieved 2026-09-10) show **`gpt-4.1-mini` = $0.40 / 1M input, $1.60 / 1M output** (cached input $0.10). Use this in DEMO.md/pitch unless the console shows otherwise. The $0.80/$3.20 figure from one earlier read was not reproduced. |
-| **D-3 live** — `GET /v1/models` returns `gpt-4.1-mini` (else `bootModelCheck` falls back to `gpt-4o-2024-08-06`) | ☑ | **BD-2 (2026-09-10)** — `npx convex run boot:checkModel` on `brazen-snail-826` with the real `OPENAI_API_KEY`: `GET /v1/models` succeeded, `gpt-4.1-mini` **is present**, `resolved_model: "gpt-4.1-mini"` (no fallback needed). `bootModelCheck()` runs once on the first live extraction and is memoised. |
+| **D-3 live** — `GET /v1/models` returns `gpt-4.1-mini` (else `bootModelCheck` falls back to `gpt-4o-2024-08-06`) | ☑ / ⚠ | **BD-2 (2026-09-10)** — `boot:checkModel` on `brazen-snail-826`: `GET /v1/models` succeeded (free endpoint, no credits used), `gpt-4.1-mini` **present**, `resolved_model: "gpt-4.1-mini"` (no fallback). **⚠ (2026-09-11):** the actual extraction call (`POST /v1/chat/completions`) against the standing-evidence live scrape returned `insufficient_quota` / `credit_balance_exhausted` — **the OpenAI account has no credits.** Consequence: real OpenAI extraction can't run until credits are added; the mocked test suite is unaffected and demo mode (D-9, golden fixtures, zero OpenAI calls) is unaffected; DEMO Beat 3's OpenAI half + a standing "OpenAI does real work" snapshot are blocked pending credits. See D-16. |
 | **D-4 live scrape — CA DCA BRN** — real `POST /v2/scrape` … returns real license fields, not a block/CAPTCHA/shell | ✗→fixture | **BD-1 (2026-09-10) — live scrape of DCA content FAILED; fixture fallback taken (as designed, D-9 / DEMO Beat 3).** Firecrawl reached `search.dca.ca.gov` fine (HTTP 200, ~320 KB, `proxy:"auto"` + `proxy:"stealth"`, `waitFor` up to 12 s), but the page carries a **Cloudflare Turnstile** challenge (`challenges.cloudflare.com/.../turnstile/...` in the body) and the SPA stays on the search form (`div.searchContainer style="display:none"`, `<title>Search - DCA`) — never renders results/detail. Real form field names captured (`boardCode`, `licenseType`, `licenseNumber`, `lastName`, …) but the data fetch is gated. **Alternate tried:** NC BON (`portal.ncbon.com/verification/search.aspx`) — `proxy:"auto"` got past the old 403 (HTTP 200) but returned an 11.8 KB session-interstitial, no license markers. **Final call:** DEMO Beat 3's live-integration proof runs on the **pre-seeded fixture Nurse A** with one spoken acknowledgement; the *Firecrawl integration itself is proven live* (200 scrape of a real .gov board host, evidence above) and demo/fixture mode exercises the identical `fetch_board_page → ctx.storage.store → commitFetchResult` path. See D-15. |

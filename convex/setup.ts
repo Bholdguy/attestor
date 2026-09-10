@@ -7,8 +7,62 @@
 //   npx convex env set AGENTMAIL_INBOX_ID <inbox_id>
 //
 // This does not send any email. It never logs the API key or the full response.
-import { internalAction } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
+
+/**
+ * Freeze a license so the cron sweep skips it (watch_enabled:false). Used to
+ * keep a captured `source_mode:"live"` snapshot as standing evidence WITHOUT
+ * re-scraping it every sweep interval (Firecrawl free tier is 1000 credits).
+ *   npx convex run setup:freezeLicense '{"licenseId":"..."}'
+ */
+export const freezeLicense = internalMutation({
+  args: { licenseId: v.id("licenses") },
+  returns: v.object({ watch_enabled: v.boolean() }),
+  handler: async (ctx, { licenseId }) => {
+    await ctx.db.patch(licenseId, { watch_enabled: false });
+    return { watch_enabled: false };
+  },
+});
+
+/** List every license id + a one-line status (debug / cleanup). */
+export const listLicensesBrief = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("licenses").collect();
+    return rows.map((r) => ({
+      _id: r._id,
+      license_number: r.license_number,
+      board_profile_url: r.board_profile_url,
+      watch_enabled: r.watch_enabled,
+    }));
+  },
+});
+
+/** Debug: non-blob fields of the latest snapshot for a license. */
+export const inspectLatestSnapshot = internalQuery({
+  args: { licenseId: v.id("licenses") },
+  handler: async (ctx, { licenseId }) => {
+    const s = await ctx.db
+      .query("snapshots")
+      .withIndex("by_license", (q) => q.eq("license_id", licenseId))
+      .order("desc")
+      .first();
+    if (!s) return null;
+    return {
+      fetch_status: s.fetch_status,
+      fetch_http_code: s.fetch_http_code,
+      source_mode: s.source_mode,
+      source_url: s.source_url,
+      raw_payload_bytes: s.raw_payload_bytes,
+      raw_payload_sha256: s.raw_payload_sha256,
+      has_blob: s.raw_payload_storage_id != null,
+      extractor_model: s.extractor_model,
+      extractor_raw_response: (s.extractor_raw_response ?? "").slice(0, 600),
+      disposition: s.disposition,
+    };
+  },
+});
 
 const AGENTMAIL_BASE_URL = (process.env.AGENTMAIL_BASE_URL || "https://api.agentmail.to").replace(
   /\/$/,
