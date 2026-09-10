@@ -15,8 +15,13 @@ export const runSweep = internalAction({
   args: {},
   // Explicit returns validator — also breaks the self-referential type inference
   // cycle (runSweep → internal.* → runSweep).
-  returns: v.object({ scheduled: v.number(), staggerMs: v.number() }),
-  handler: async (ctx): Promise<{ scheduled: number; staggerMs: number }> => {
+  returns: v.object({ scheduled: v.number(), staggerMs: v.number(), skipped: v.string() }),
+  handler: async (ctx): Promise<{ scheduled: number; staggerMs: number; skipped: string }> => {
+    // Demo mode drives its own compressed chain (demo.runDemoSequence); the live
+    // cron stands down so it can't perturb the deterministic sequence (Step 10).
+    const demoMode = await ctx.runQuery(internal.read.isDemoMode, {});
+    if (demoMode) return { scheduled: 0, staggerMs: FETCH_STAGGER_MS, skipped: "demo_mode" };
+
     const licenseIds = await ctx.runQuery(internal.read.watchedLicenseIds, {});
     for (let i = 0; i < licenseIds.length; i++) {
       await ctx.scheduler.runAfter(
@@ -25,6 +30,6 @@ export const runSweep = internalAction({
         { licenseId: licenseIds[i] },
       );
     }
-    return { scheduled: licenseIds.length, staggerMs: FETCH_STAGGER_MS };
+    return { scheduled: licenseIds.length, staggerMs: FETCH_STAGGER_MS, skipped: "" };
   },
 });

@@ -23,10 +23,20 @@ export const runForLicense = internalAction({
 
     const inputs = await ctx.runQuery(internal.read.loopInputs, { licenseId });
     if (!inputs || !inputs.license) return null; // license removed between schedule and run
-    const { license, demo_mode } = inputs;
+    const { license, demo_mode, resolved_fixture_id } = inputs;
 
     const mode: "live" | "fixture" =
-      demo_mode || license.board_profile_url.startsWith("fixture://") ? "fixture" : "live";
+      demo_mode ||
+      license.board_profile_url.startsWith("fixture://") ||
+      resolved_fixture_id != null
+        ? "fixture"
+        : "live";
+    // In fixture mode, prefer the cursor-resolved sequence id (demo), else the id
+    // baked into the URL.
+    const boardUrl =
+      mode === "fixture" && resolved_fixture_id != null
+        ? `fixture://${resolved_fixture_id}`
+        : license.board_profile_url;
 
     // link this snapshot to a prior FETCH-level failure, if any (D-7)
     const retry_of_snapshot_id = await ctx.runQuery(internal.read.retryTarget, { licenseId });
@@ -36,7 +46,7 @@ export const runForLicense = internalAction({
       result = await fetch_board_page({
         license_number: license.license_number,
         state: license.issuing_state,
-        board_profile_url: license.board_profile_url,
+        board_profile_url: boardUrl,
         mode,
       });
     } catch (err) {
@@ -48,7 +58,7 @@ export const runForLicense = internalAction({
         raw_payload_sha256: await sha256Hex(raw_html),
         raw_payload_excerpt: excerpt(raw_html),
         raw_payload_bytes: utf8Bytes(raw_html),
-        source_url: license.board_profile_url,
+        source_url: boardUrl,
         source_mode: mode,
         fetched_at,
         fetch_status: "http_error",

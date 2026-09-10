@@ -630,6 +630,34 @@ row (should read the 3-value union), TESTING `alert-once` / `agentmail-failure`.
 
 ---
 
+## D-19 — the compressed demo sweep awaits each fetch instead of a delayed scheduler chain — LOCKED (Step 10)
+
+**Planned (Step 10 / DEMO.md):** `runDemoSequence` schedules the fixture
+sequence with `ctx.scheduler.runAfter(i * gapMs, …)` "with 2–4 s gaps".
+
+**Build reality:** scheduling every round up front and draining with
+`finishAllScheduledFunctions(vi.runAllTimers)` is a race — round N+1's
+`runForLicense` can read `fixture_cursor` *before* round N's `commitFetchResult`
+has advanced it, so a demo license re-serves its first fixture and never trips
+its conflict (the determinism tests saw 0 cases). And an in-action sleep for
+pacing re-hits the D-13 fake-timer deadlock.
+
+**Decision:** `runDemoSequence` (internalAction) runs the sequence **sequentially
+and awaited** — `for round { for demo-license in that round { await
+ctx.runAction(internal.loop.runForLicense, {licenseId}) } }`. Round N is fully
+committed (cursor advanced) before round N+1 starts. No scheduler chain, no
+sleeps. Fully deterministic (AC6): two back-to-back `runDemo` calls produce a
+byte-identical 10 snapshots / 4 cases (`identity, privilege, status, status`) /
+4 alerts, 0 Firecrawl, 0 OpenAI. On the real deployment the timeline dots still
+appear as a visible progression (each `runForLicense` takes ~1–2 s); the "2–4 s
+gap" was cosmetic pacing, not a guarantee.
+
+**Touches:** `convex/demo.ts` (`runDemoSequence`), DEMO.md §Timing (narration
+length unchanged; the mechanical sequence is faster), TESTING
+`demo-determinism` / `demo-no-live-calls`.
+
+---
+
 ## Running verification log (fill in on build day)
 
 | Item | Checked? | Result |

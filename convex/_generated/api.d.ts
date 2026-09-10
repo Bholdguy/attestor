@@ -16,6 +16,7 @@ import type * as cases from "../cases.js";
 import type * as commit from "../commit.js";
 import type * as contract from "../contract.js";
 import type * as crons from "../crons.js";
+import type * as demo from "../demo.js";
 import type * as diff from "../diff.js";
 import type * as firecrawl from "../firecrawl.js";
 import type * as fixtures_index from "../fixtures/index.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   commit: typeof commit;
   contract: typeof contract;
   crons: typeof crons;
+  demo: typeof demo;
   diff: typeof diff;
   firecrawl: typeof firecrawl;
   "fixtures/index": typeof fixtures_index;

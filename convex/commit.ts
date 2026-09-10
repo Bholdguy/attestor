@@ -332,6 +332,14 @@ export const commitFetchResult = internalMutation({
           : ""),
     });
 
+    // Demo mode: advance the fixture cursor so the next fetch serves the next
+    // fixture in the sequence (no-op for live licenses — empty sequence).
+    if (license.fixture_sequence.length > 0) {
+      await ctx.db.patch(args.license_id, {
+        fixture_cursor: Math.min(license.fixture_cursor + 1, license.fixture_sequence.length),
+      });
+    }
+
     return {
       snapshot_id: snapshotId,
       disposition: dispo,

@@ -8,6 +8,7 @@ import { CaseDetail } from "./components/CaseDetail";
 import { WorkerTimeline } from "./components/WorkerTimeline";
 import { CompareView } from "./components/CompareView";
 import { MetricsPanel } from "./components/MetricsPanel";
+import { DemoBanner, DemoPanel } from "./components/DemoPanel";
 
 // Step 9 — operator dashboard. Roster (badge + confirmed_snapshot_id, I1) →
 // timeline → snapshot drawer; open cases → case detail → compare + resolve;
@@ -60,13 +61,18 @@ export default function App() {
   }
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: 24, maxWidth: 1040, margin: "0 auto" }}>
-      <h1 style={{ marginBottom: 4 }}>Attestor</h1>
-      <p style={{ marginTop: 0, color: "#555" }}>
-        License Trust Supervisor — it tells you whether to trust what the board page just said.
-      </p>
+    <>
+      <DemoBanner />
+      <main
+        style={{ fontFamily: "system-ui, sans-serif", padding: 24, maxWidth: 1040, margin: "0 auto" }}
+      >
+        <h1 style={{ marginBottom: 4 }}>Attestor</h1>
+        <p style={{ marginTop: 0, color: "#555" }}>
+          License Trust Supervisor — it tells you whether to trust what the board page just said.
+        </p>
 
-      <MetricsPanel />
+        <DemoPanel />
+        <MetricsPanel />
 
       <section style={{ marginBottom: 16 }}>
         <button onClick={() => setShowForm((s) => !s)}>{showForm ? "Cancel" : "+ Add worker"}</button>
@@ -228,6 +234,7 @@ export default function App() {
       {compare && (
         <CompareView aId={compare.a} bId={compare.b} onClose={() => setCompare(null)} />
       )}
-    </main>
+      </main>
+    </>
   );
 }

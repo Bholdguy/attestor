@@ -3,7 +3,11 @@ import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
-/** All watch_enabled license ids — the cron sweep's fan-out set (D-1/D-7). */
+/**
+ * The cron sweep's fan-out set (D-1/D-7): watch_enabled licenses that are NOT
+ * demo-driven. A license with a non-empty fixture_sequence is stepped only by
+ * demo.runDemoSequence, never the live cron.
+ */
 export const watchedLicenseIds = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -11,8 +15,13 @@ export const watchedLicenseIds = internalQuery({
       .query("licenses")
       .withIndex("by_watch_enabled", (q) => q.eq("watch_enabled", true))
       .collect();
-    return rows.map((r) => r._id);
+    return rows.filter((r) => r.fixture_sequence.length === 0).map((r) => r._id);
   },
+});
+
+export const isDemoMode = internalQuery({
+  args: {},
+  handler: async (ctx) => (await ctx.db.query("settings").first())?.demo_mode ?? false,
 });
 
 /**
@@ -32,11 +41,19 @@ export const loopInputs = internalQuery({
       .filter((q) => q.eq(q.field("active"), true))
       .first();
     const settings = await ctx.db.query("settings").first();
+
+    // Demo mode / a sequenced license serves the fixture at fixture_cursor
+    // (clamped to the last entry). Live licenses have an empty sequence.
+    const seq = license.fixture_sequence;
+    const resolved_fixture_id =
+      seq.length > 0 ? seq[Math.min(license.fixture_cursor, seq.length - 1)] : null;
+
     return {
       license,
       worker,
       assignment,
       demo_mode: settings?.demo_mode ?? false,
+      resolved_fixture_id,
     };
   },
 });
