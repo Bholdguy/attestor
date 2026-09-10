@@ -75,10 +75,12 @@ describe("Step 5 — extraction + diff", () => {
         { field: "status_normalized", prior: "active", current: "expired" },
         { field: "expire_date", prior: "2026-06-30", current: "2024-06-30" },
       ]);
-      // Step 5: never a silent pass — disagreement does NOT confirm; pointer held.
-      expect(s2.disposition).toBe("unconfirmed");
+      // never a silent pass — the disagreement does NOT confirm; pointer held.
+      // (Step 7: this is now a `conflict` with an open case, not bare unconfirmed.)
+      expect(s2.disposition).toBe("conflict");
       const lic = await ctx.db.get(licenseId);
       expect(lic?.current_confirmed_snapshot_id).toEqual(s1);
+      expect(lic?.open_case_id).not.toBeNull();
 
       // a diff audit row records the conflict
       const diffAudit = (
@@ -90,7 +92,8 @@ describe("Step 5 — extraction + diff", () => {
       expect(diffAudit[0].outcome).toBe("conflict:status_normalized,expire_date");
     });
 
-    // T3 — identical to T1 again ⇒ agrees:true, re-confirms
+    // T3 — board shows Active again ⇒ diff agrees:true (never a false conflict),
+    // but the case from T2 is still open, so it does NOT auto-confirm (I4).
     await t.run(async (ctx) => {
       await ctx.db.patch(licenseId, { board_profile_url: "fixture://flip_active" });
     });
@@ -105,10 +108,40 @@ describe("Step 5 — extraction + diff", () => {
           .collect()
       ).sort((a, b) => a._creationTime - b._creationTime);
       expect(s).toHaveLength(3);
-      expect(s[2].diff_result?.agrees).toBe(true);
-      expect(s[2].disposition).toBe("confirmed");
+      expect(s[2].diff_result?.agrees).toBe(true); // NOT a false conflict
+      expect(s[2].disposition).toBe("unconfirmed"); // open case gates confirmation
       const lic = await ctx.db.get(licenseId);
-      expect(lic?.current_confirmed_snapshot_id).toEqual(s[2]._id);
+      expect(lic?.current_confirmed_snapshot_id).toEqual(s1); // pointer still frozen
+      // still exactly one case (idempotent), no new alert
+      const cases = await ctx.db
+        .query("mismatch_cases")
+        .withIndex("by_license", (q) => q.eq("license_id", licenseId))
+        .collect();
+      expect(cases).toHaveLength(1);
+    });
+  });
+
+  test("with NO open case, two agreeing fetches both confirm (never a false conflict)", async () => {
+    const t = convexTest(schema, modules);
+    const { licenseId } = await t.mutation(api.roster.addWorker, FIXTURE_WORKER);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await t.action(internal.sweep.runSweep, {}); // second identical fetch
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    await t.run(async (ctx) => {
+      const s = (
+        await ctx.db
+          .query("snapshots")
+          .withIndex("by_license", (q) => q.eq("license_id", licenseId))
+          .collect()
+      ).sort((a, b) => a._creationTime - b._creationTime);
+      expect(s).toHaveLength(2);
+      expect(s[0].disposition).toBe("confirmed");
+      expect(s[1].disposition).toBe("confirmed");
+      expect(s[1].diff_result?.agrees).toBe(true);
+      const lic = await ctx.db.get(licenseId);
+      expect(lic?.current_confirmed_snapshot_id).toEqual(s[1]._id); // pointer advanced
+      expect(lic?.open_case_id).toBeNull();
     });
   });
 

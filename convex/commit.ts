@@ -1,23 +1,101 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // commit.ts — commitFetchResult, THE atomic core (D-6 / I9).
 //
-// ONE Convex mutation = ONE serializable transaction. It reads the prior
-// confirmed snapshot, runs the pure reasoning (diff / identity / privilege —
-// wired in Steps 5–6), db.inserts the snapshot with its final disposition, and
-// applies the GATE (pointer flip OR open case + scheduled alert — Step 7), plus
-// every audit row. No query can observe the snapshot without its consequence.
+// ONE Convex mutation = ONE serializable transaction. In it:
+//   • read the prior *confirmed* snapshot + worker + active assignment
+//   • run the pure reasoning: diff (Step 5) + bind_identity + check_privilege (Step 6)
+//   • deriveDisposition (gate.ts) — fail closed first, else union every conflict kind
+//   • db.insert the snapshot with its final disposition (append-only — I5)
+//   • apply the GATE:
+//       confirmed  → flip current_confirmed_snapshot_id to the new row
+//       conflict   → create_mismatch_case (idempotent), set open_case_id,
+//                    scheduler.runAfter(0, sendAlert) — all in THIS txn (I8/I9)
+//       unconfirmed→ pointer + open_case_id untouched (I6)
+//   • write the fetch / extract / diff / gate audit rows
 //
-// Step 3 skeleton: reasoning is null, the GATE is stubbed to "confirm when the
-// fetch is ok". Steps 4–7 fill the branches in place — the transaction shape and
-// the single entry point exist from the start.
+// No query can ever observe the snapshot without its consequence. `snapshots` is
+// NEVER patched or replaced (M7 = 0). Only cases.resolveCase clears open_case_id.
 // ─────────────────────────────────────────────────────────────────────────────
-import { internalMutation } from "./_generated/server";
+import { internalMutation, type MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
-import { extractedFields, fetchStatus, disposition as dispositionV } from "./contract";
-import type { Doc } from "./_generated/dataModel";
-import { diff_snapshot } from "./diff";
+import {
+  extractedFields,
+  fetchStatus,
+  disposition as dispositionV,
+  caseType as caseTypeV,
+  type CaseDetail,
+  type ConflictKind,
+} from "./contract";
+import type { Doc, Id } from "./_generated/dataModel";
+import { diff_snapshot, diffConflictKinds } from "./diff";
 import { bind_identity, identityBlocksConfirm } from "./identity";
 import { check_privilege, privilegeBlocksConfirm } from "./privilege";
+import { deriveDisposition, pickHeadlineType } from "./gate";
+
+// ── create_mismatch_case — internal helper (NOT a registered mutation). ──────
+// Idempotent per (license, open case): returns created:false if open_case_id is
+// already set. Never auto-resolves (I4). D-10a: caller passes the headline
+// `type` (highest-priority kind); `detail.detected_types` keeps every kind.
+export async function create_mismatch_case(
+  ctx: MutationCtx,
+  input: {
+    license_id: Id<"licenses">;
+    worker_id: Id<"workers">;
+    type: ConflictKind;
+    snapshot_a_id: Id<"snapshots">;
+    snapshot_b_id: Id<"snapshots">;
+    reason: string;
+    detail: CaseDetail;
+  },
+): Promise<{ case_id: Id<"mismatch_cases">; created: boolean }> {
+  const license = await ctx.db.get(input.license_id);
+  if (!license) throw new ConvexError(`create_mismatch_case: license ${input.license_id} not found`);
+  if (license.open_case_id != null) {
+    return { case_id: license.open_case_id, created: false };
+  }
+  const case_id = await ctx.db.insert("mismatch_cases", {
+    license_id: input.license_id,
+    worker_id: input.worker_id,
+    type: input.type,
+    snapshot_a_id: input.snapshot_a_id,
+    snapshot_b_id: input.snapshot_b_id,
+    reason: input.reason,
+    detail: input.detail,
+    resolution_state: "open",
+    resolved_by: null,
+    resolved_at: null,
+    resolution_note: null,
+  });
+  return { case_id, created: true };
+}
+
+function buildReason(
+  detected: readonly ConflictKind[],
+  fields: Doc<"snapshots">["extracted_fields"],
+  prior: Doc<"snapshots"> | null,
+  identity: Doc<"snapshots">["identity_result"],
+  privilege: Doc<"snapshots">["privilege_result"],
+  nameRegistered: string,
+): string {
+  const parts: string[] = [];
+  if (detected.includes("identity") && identity) {
+    parts.push(
+      `identity: board name "${fields?.licensee_name ?? "?"}" vs registered "${nameRegistered}" — ${identity.mismatch_reason} (similarity ${identity.registered_name_similarity.toFixed(2)}${identity.number_matches ? "" : ", license number mismatch"})`,
+    );
+  }
+  if (detected.includes("privilege") && privilege) {
+    parts.push(
+      `privilege: ${fields?.privilege_type ?? "?"} not valid for assignment ${privilege.assignment_state} — ${privilege.reason}`,
+    );
+  }
+  if (detected.includes("status")) {
+    const now = fields?.status_word ?? fields?.status_normalized ?? "?";
+    const was = prior?.extracted_fields?.status_word ?? prior?.extracted_fields?.status_normalized ?? "?";
+    parts.push(`status: board now "${now}" vs last confirmed "${was}"`);
+  }
+  return parts.join(" · ") || "conflict detected";
+}
 
 export const commitFetchResult = internalMutation({
   args: {
@@ -40,6 +118,8 @@ export const commitFetchResult = internalMutation({
     snapshot_id: v.id("snapshots"),
     disposition: dispositionV,
     case_id: v.union(v.id("mismatch_cases"), v.null()),
+    case_type: v.union(caseTypeV, v.null()),
+    detected_types: v.array(v.union(v.literal("identity"), v.literal("privilege"), v.literal("status"))),
     alert_scheduled: v.boolean(),
   }),
   handler: async (ctx, args) => {
@@ -48,14 +128,12 @@ export const commitFetchResult = internalMutation({
       throw new ConvexError(`commitFetchResult: license ${args.license_id} not found`);
     }
 
-    // Prior *confirmed* snapshot — the diff baseline (Step 5 reads its fields).
     const priorConfirmed: Doc<"snapshots"> | null = license.current_confirmed_snapshot_id
       ? await ctx.db.get(license.current_confirmed_snapshot_id)
       : null;
 
-    // Worker (registered name) + active assignment (assignment state) — the
-    // identity + privilege check inputs (I2 / I3). Read in the SAME txn.
     const worker = await ctx.db.get(license.worker_id);
+    const nameRegistered = worker?.name_registered ?? "";
     const assignment = await ctx.db
       .query("assignments")
       .withIndex("by_worker", (q) => q.eq("worker_id", license.worker_id))
@@ -73,19 +151,14 @@ export const commitFetchResult = internalMutation({
           )
         : null;
 
-    // I2 — number + registered name, never name-string alone.
     const identity_result =
       args.extracted_fields != null
         ? bind_identity(
-            {
-              license_number: license.license_number,
-              name_registered: worker?.name_registered ?? "",
-            },
+            { license_number: license.license_number, name_registered: nameRegistered },
             args.extracted_fields,
           )
         : null;
 
-    // I3 — extracted privilege type vs the worker's ACTUAL assignment state.
     const privilege_result =
       args.extracted_fields != null
         ? check_privilege(
@@ -96,26 +169,19 @@ export const commitFetchResult = internalMutation({
           )
         : null;
 
-    // ── GATE (Step 7 completes: disagreement/invalid → conflict + case + alert) ─
-    const fetchOk = args.fetch_status === "ok";
-    const confidenceLow = args.extracted_fields?.extraction_confidence === "low";
-    const diffDisagrees = diff_result != null && !diff_result.agrees;
-    const identityBad = identity_result != null && identityBlocksConfirm(identity_result);
-    const privilegeBad = privilege_result != null && privilegeBlocksConfirm(privilege_result);
+    // ── GATE (pure) ────────────────────────────────────────────────────────
+    const diffKinds =
+      diff_result != null && !diff_result.agrees ? diffConflictKinds(diff_result) : [];
+    const { disposition: dispo, detected } = deriveDisposition({
+      fetch_status: args.fetch_status,
+      confidence: args.extracted_fields?.extraction_confidence ?? null,
+      diffKinds,
+      identityOk: identity_result ? !identityBlocksConfirm(identity_result) : null,
+      privilegeOk: privilege_result ? !privilegeBlocksConfirm(privilege_result) : null,
+      caseAlreadyOpen: license.open_case_id != null,
+    });
 
-    let dispo: Doc<"snapshots">["disposition"];
-    if (!fetchOk || args.extracted_fields == null || confidenceLow) {
-      dispo = "unconfirmed"; // I6 fail-closed
-    } else if (diffDisagrees || identityBad || privilegeBad) {
-      // Step 7 upgrades this branch to disposition:"conflict" + create_mismatch_case
-      // (with D-10a headline-type priority identity > privilege > status).
-      // Until then: never a silent pass — a disagreeing/invalid fetch does NOT confirm.
-      dispo = "unconfirmed";
-    } else {
-      dispo = "confirmed";
-    }
-
-    // ── the ONE snapshot insert (append-only, I5) ───────────────────────────
+    // ── the ONE snapshot insert (append-only, I5) ─────────────────────────
     const snapshotId = await ctx.db.insert("snapshots", {
       license_id: args.license_id,
       fetched_at: args.fetched_at,
@@ -137,29 +203,69 @@ export const commitFetchResult = internalMutation({
       disposition: dispo,
     });
 
-    // ── gate application (same txn) ────────────────────────────────────────
-    const case_id: null = null;
-    const alert_scheduled = false;
+    // ── gate application (same txn — I9) ──────────────────────────────────
+    let case_id: Id<"mismatch_cases"> | null = null;
+    let case_type: ConflictKind | null = null;
+    let alert_scheduled = false;
+
     if (dispo === "confirmed") {
+      // flip the pointer to the row just inserted
       await ctx.db.patch(args.license_id, {
         current_confirmed_snapshot_id: snapshotId,
         last_fetch_at: args.fetched_at,
       });
+    } else if (dispo === "conflict") {
+      case_type = pickHeadlineType(detected);
+      const detail: CaseDetail = {
+        conflicts: diff_result?.conflicts ?? [],
+        detected_types: detected,
+        ...(identity_result ? { identity_result } : {}),
+        ...(privilege_result ? { privilege_result } : {}),
+      };
+      const created = await create_mismatch_case(ctx, {
+        license_id: args.license_id,
+        worker_id: license.worker_id,
+        type: case_type,
+        snapshot_a_id: priorConfirmed?._id ?? snapshotId,
+        snapshot_b_id: snapshotId,
+        reason: buildReason(
+          detected,
+          args.extracted_fields,
+          priorConfirmed,
+          identity_result,
+          privilege_result,
+          nameRegistered,
+        ),
+        detail,
+      });
+      case_id = created.case_id;
+      if (created.created) {
+        await ctx.db.patch(args.license_id, {
+          open_case_id: created.case_id,
+          last_fetch_at: args.fetched_at,
+        });
+        // transactional: the alert is scheduled IFF this txn commits (I9).
+        await ctx.scheduler.runAfter(0, internal.alert.sendAlert, { caseId: created.case_id });
+        alert_scheduled = true;
+      } else {
+        // a case is already open on this license — no new case, no new alert (I8).
+        await ctx.db.patch(args.license_id, { last_fetch_at: args.fetched_at });
+      }
     } else {
-      // pointer + open_case_id untouched (I6 fail-closed)
+      // unconfirmed — pointer + open_case_id untouched (I6 fail-closed)
       await ctx.db.patch(args.license_id, { last_fetch_at: args.fetched_at });
     }
 
-    // ── audit rows: one per loop stage, same txn ───────────────────────────
+    // ── audit rows: one per loop stage, same txn ─────────────────────────
     const base = {
       at: args.fetched_at,
       license_id: args.license_id,
       snapshot_id: snapshotId,
-      case_id: null as null,
       actor: "system",
     };
     await ctx.db.insert("audit_events", {
       ...base,
+      case_id: null,
       stage: "fetch",
       outcome: args.fetch_status,
       message:
@@ -168,6 +274,7 @@ export const commitFetchResult = internalMutation({
     });
     await ctx.db.insert("audit_events", {
       ...base,
+      case_id: null,
       stage: "extract",
       outcome: args.extracted_fields
         ? "ok"
@@ -183,6 +290,7 @@ export const commitFetchResult = internalMutation({
     });
     await ctx.db.insert("audit_events", {
       ...base,
+      case_id: null,
       stage: "diff",
       outcome: !diff_result
         ? "skipped"
@@ -203,10 +311,18 @@ export const commitFetchResult = internalMutation({
     });
     await ctx.db.insert("audit_events", {
       ...base,
+      case_id,
       stage: "gate",
-      outcome: dispo,
+      outcome:
+        dispo === "conflict"
+          ? `conflict:${case_type}` + (detected.length > 1 ? `[${[...detected].sort().join(",")}]` : "")
+          : dispo,
       message:
         `gate → ${dispo}` +
+        (dispo === "conflict"
+          ? ` · case ${case_id} type=${case_type} detected=[${[...detected].sort().join(",")}]` +
+            (alert_scheduled ? " · alert scheduled" : " · case already open (no new alert)")
+          : "") +
         (identity_result
           ? ` · identity ${identity_result.match_confidence}` +
             (identity_result.mismatch_reason !== "none" ? `(${identity_result.mismatch_reason})` : "")
@@ -216,6 +332,13 @@ export const commitFetchResult = internalMutation({
           : ""),
     });
 
-    return { snapshot_id: snapshotId, disposition: dispo, case_id, alert_scheduled };
+    return {
+      snapshot_id: snapshotId,
+      disposition: dispo,
+      case_id,
+      case_type: case_type,
+      detected_types: detected,
+      alert_scheduled,
+    };
   },
 });

@@ -8,14 +8,17 @@
  * @module
  */
 
+import type * as alert from "../alert.js";
 import type * as badge from "../badge.js";
 import type * as boot from "../boot.js";
+import type * as cases from "../cases.js";
 import type * as commit from "../commit.js";
 import type * as contract from "../contract.js";
 import type * as crons from "../crons.js";
 import type * as diff from "../diff.js";
 import type * as firecrawl from "../firecrawl.js";
 import type * as fixtures_index from "../fixtures/index.js";
+import type * as gate from "../gate.js";
 import type * as health from "../health.js";
 import type * as identity from "../identity.js";
 import type * as lib_hash from "../lib/hash.js";
@@ -35,14 +38,17 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  alert: typeof alert;
   badge: typeof badge;
   boot: typeof boot;
+  cases: typeof cases;
   commit: typeof commit;
   contract: typeof contract;
   crons: typeof crons;
   diff: typeof diff;
   firecrawl: typeof firecrawl;
   "fixtures/index": typeof fixtures_index;
+  gate: typeof gate;
   health: typeof health;
   identity: typeof identity;
   "lib/hash": typeof lib_hash;

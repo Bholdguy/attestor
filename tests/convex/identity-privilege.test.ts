@@ -88,11 +88,13 @@ describe("Step 6 — identity + privilege binding, distinct signals", () => {
     expect(s2.diff_result?.agrees).toBe(false);
     expect(diffIsStatusConflict(s2.diff_result!)).toBe(false);
     expect(s2.diff_result?.conflicts.some((c) => c.field === "status_normalized")).toBe(false);
-    // never a silent pass
-    expect(s2.disposition).toBe("unconfirmed");
-    expect((await t.run((ctx) => ctx.db.get(licenseId)))?.current_confirmed_snapshot_id).toEqual(
-      snaps[0]._id,
-    );
+    // never a silent pass — a conflict case, pointer held (Step 7)
+    expect(s2.disposition).toBe("conflict");
+    const licAfter = await t.run((ctx) => ctx.db.get(licenseId));
+    expect(licAfter?.current_confirmed_snapshot_id).toEqual(snaps[0]._id);
+    const caseRow = await t.run((ctx) => ctx.db.get(licAfter!.open_case_id!));
+    expect(caseRow?.type).toBe("identity"); // identity-typed, not status
+    expect(caseRow?.detail.detected_types).toEqual(["identity"]);
 
     const gate = await t.run(async (ctx) =>
       (
@@ -128,7 +130,14 @@ describe("Step 6 — identity + privilege binding, distinct signals", () => {
     // identity is clean — the signal is privilege only
     expect(s2.identity_result?.match_confidence).toBe("exact");
     expect(s2.identity_result?.mismatch_reason).toBe("none");
-    expect(s2.disposition).toBe("unconfirmed");
+    expect(s2.disposition).toBe("conflict");
+    const c = await t.run(async (ctx) => {
+      const lic = await ctx.db.get(licenseId);
+      return ctx.db.get(lic!.open_case_id!);
+    });
+    expect(c?.type).toBe("privilege");
+    expect(c?.detail.detected_types).toContain("privilege");
+    expect(c?.detail.detected_types).not.toContain("identity");
   });
 
   test("multi_conflict ⇒ status flag AND privilege flag on one snapshot, identity clean (D-10a setup)", async () => {
@@ -154,6 +163,13 @@ describe("Step 6 — identity + privilege binding, distinct signals", () => {
     expect(s2.privilege_result?.valid).toBe(false);
     // identity clean — NOT conflated
     expect(s2.identity_result?.match_confidence).toBe("exact");
-    expect(s2.disposition).toBe("unconfirmed");
+    expect(s2.disposition).toBe("conflict");
+    // ONE case, headline privilege (D-10a: privilege > status), detail keeps both
+    const c = await t.run(async (ctx) => {
+      const lic = await ctx.db.get(licenseId);
+      return ctx.db.get(lic!.open_case_id!);
+    });
+    expect(c?.type).toBe("privilege");
+    expect([...(c?.detail.detected_types ?? [])].sort()).toEqual(["privilege", "status"]);
   });
 });

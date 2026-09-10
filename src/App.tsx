@@ -4,6 +4,7 @@ import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { badgeDisplay } from "../convex/badge";
 import { SnapshotDrawer } from "./components/SnapshotDrawer";
+import { CaseDetail } from "./components/CaseDetail";
 
 // Step 3 UI — minimal Add-worker form + reactive roster list. The full operator
 // dashboard (timeline, snapshot drawer, compare, cases, metrics, DEMO banner)
@@ -26,11 +27,13 @@ const BLANK = {
 
 export default function App() {
   const roster = useQuery(api.roster.listRoster);
+  const openCases = useQuery(api.cases.listOpenCases);
   const addWorker = useMutation(api.roster.addWorker);
   const [form, setForm] = useState({ ...BLANK });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [openSnapshot, setOpenSnapshot] = useState<Id<"snapshots"> | null>(null);
+  const [openCase, setOpenCase] = useState<Id<"mismatch_cases"> | null>(null);
 
   const set = (k: keyof typeof BLANK) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -145,9 +148,44 @@ export default function App() {
         )}
       </section>
 
+      <section style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 16 }}>Open mismatch cases</h2>
+        {openCases === undefined ? (
+          <p>Loading…</p>
+        ) : openCases.length === 0 ? (
+          <p style={{ color: "#777" }}>None open.</p>
+        ) : (
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "2px solid #ccc" }}>
+                <th style={{ padding: "6px 8px" }}>Type</th>
+                <th style={{ padding: "6px 8px" }}>Worker</th>
+                <th style={{ padding: "6px 8px" }}>Detected</th>
+                <th style={{ padding: "6px 8px" }}>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {openCases.map((c) => (
+                <tr
+                  key={c._id}
+                  onClick={() => setOpenCase(c._id)}
+                  style={{ borderBottom: "1px solid #eee", cursor: "pointer" }}
+                >
+                  <td style={{ padding: "6px 8px" }}>🟠 {c.type}</td>
+                  <td style={{ padding: "6px 8px" }}>{c.worker_name_hired}</td>
+                  <td style={{ padding: "6px 8px" }}>{c.detected_types.join(", ")}</td>
+                  <td style={{ padding: "6px 8px", fontSize: 12 }}>{c.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
       {openSnapshot && (
         <SnapshotDrawer snapshotId={openSnapshot} onClose={() => setOpenSnapshot(null)} />
       )}
+      {openCase && <CaseDetail caseId={openCase} onClose={() => setOpenCase(null)} />}
     </main>
   );
 }

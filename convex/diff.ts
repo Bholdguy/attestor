@@ -6,7 +6,7 @@
 // Called INSIDE commitFetchResult (D-6), against the prior confirmed snapshot
 // read in the same transaction.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { ExtractedFields, DiffResult, ConflictEntry } from "./contract";
+import type { ExtractedFields, DiffResult, ConflictEntry, ConflictKind } from "./contract";
 
 /** collapse whitespace + case so a cosmetic re-render is never a conflict */
 function normName(s: string): string {
@@ -83,12 +83,31 @@ export function diff_snapshot(
 /**
  * Does this diff contribute a "status"-kind conflict for the gate (Step 7)?
  * A status-word flip or an expiry/issue-date change between confirmed snapshots.
- * Name / number changes are attributed to the identity kind (bind_identity vs
- * the registered worker), and privilege_type changes to the privilege kind —
- * both decided in gate.ts, not here.
  */
 export function diffIsStatusConflict(diff: DiffResult): boolean {
   return diff.conflicts.some(
     (c) => c.field === "status_normalized" || c.field === "expire_date" || c.field === "issue_date",
   );
+}
+
+/**
+ * Map each field-level diff conflict to a gate conflict KIND (D-10a):
+ *   status_normalized / issue_date / expire_date  → "status"
+ *   licensee_name / license_number                → "identity"
+ *   privilege_type                                → "privilege"
+ * The union feeds `deriveDisposition`; `detail.detected_types` keeps every kind,
+ * and every non-agreeing diff contributes at least one — never a silent pass.
+ */
+export function diffConflictKinds(diff: DiffResult): ConflictKind[] {
+  const kinds = new Set<ConflictKind>();
+  for (const c of diff.conflicts) {
+    if (c.field === "status_normalized" || c.field === "issue_date" || c.field === "expire_date") {
+      kinds.add("status");
+    } else if (c.field === "licensee_name" || c.field === "license_number") {
+      kinds.add("identity");
+    } else if (c.field === "privilege_type") {
+      kinds.add("privilege");
+    }
+  }
+  return [...kinds];
 }

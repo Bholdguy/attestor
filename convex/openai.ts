@@ -20,6 +20,10 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const OPENAI_MODEL_FALLBACK = process.env.OPENAI_MODEL_FALLBACK || "gpt-4o-2024-08-06";
 const MAX_OUTPUT_TOKENS = Math.max(256, Number(process.env.OPENAI_MAX_OUTPUT_TOKENS ?? 800) || 800);
 const REQUEST_TIMEOUT_MS = 30_000;
+// A real licensee detail page is well under this; JS-heavy shells (e.g. a search
+// SPA) run to hundreds of KB. Cap the input so an outlier page degrades to a
+// low-confidence extraction rather than a hard API error / timeout.
+const MAX_HTML_CHARS = 120_000;
 
 export type ExtractOutcome =
   | { ok: true; fields: ExtractedFields; model: string; raw_response: string }
@@ -188,6 +192,10 @@ export async function extract_license_fields(
   }
 
   const model = await bootModelCheck(apiKey);
+  const html =
+    raw_html.length > MAX_HTML_CHARS
+      ? raw_html.slice(0, MAX_HTML_CHARS) + "\n<!-- truncated -->"
+      : raw_html;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -201,7 +209,7 @@ export async function extract_license_fields(
         temperature: 0,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `<board_page_html>\n${raw_html}\n</board_page_html>` },
+          { role: "user", content: `<board_page_html>\n${html}\n</board_page_html>` },
         ],
         response_format: {
           type: "json_schema",

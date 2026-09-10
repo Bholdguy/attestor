@@ -27,12 +27,34 @@ function walk(dir, acc = []) {
   return acc;
 }
 
+const inConvex = (p) => p.includes(`${join("convex", "")}`) && !p.includes(".test.");
+const basename = (p) => p.split(/[\\/]/).pop();
+
 const rules = [
   {
-    name: 'no db.patch/replace on "snapshots" (I5 / M7 — append-only)',
+    name: 'no db.patch/replace on "snapshots" (I5 / M7 — append-only, AC7)',
     test: (path, src) =>
-      path.includes(`${join("convex", "")}`) &&
-      /db\.(patch|replace)\(\s*["'`]snapshots/.test(src),
+      inConvex(path) && /db\.(patch|replace|delete)\(\s*["'`]snapshots/.test(src),
+  },
+  {
+    // I4 — only cases.resolveCase *patches* open_case_id to null. Any other
+    // convex module doing `db.patch(..., { open_case_id: null })` is an
+    // auto-resolution path. (An insert of a fresh license with open_case_id:null
+    // is fine — that's the initial value, matched by db.insert not db.patch.)
+    name: "only cases.ts patches `open_case_id: null` (I4 — no auto-resolution)",
+    test: (path, src) =>
+      inConvex(path) &&
+      basename(path) !== "cases.ts" &&
+      /db\.patch\([^)]*open_case_id\s*:\s*null/.test(src),
+  },
+  {
+    // The confirmed-pointer is moved only by the atomic gate (commit.ts) and the
+    // human resolve path (cases.ts).
+    name: "only commit.ts / cases.ts patch `current_confirmed_snapshot_id`",
+    test: (path, src) =>
+      inConvex(path) &&
+      !["commit.ts", "cases.ts"].includes(basename(path)) &&
+      /db\.patch\([^)]*current_confirmed_snapshot_id\s*:/.test(src),
   },
   {
     name: "no dangerouslySetInnerHTML in src/ (SECURITY.md §3)",
