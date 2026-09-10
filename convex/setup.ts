@@ -25,6 +25,45 @@ export const freezeLicense = internalMutation({
   },
 });
 
+/** Debug: point a license at a different board_profile_url (fixture or real). */
+export const setBoardUrl = internalMutation({
+  args: { licenseId: v.id("licenses"), url: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { licenseId, url }): Promise<null> => {
+    await ctx.db.patch(licenseId, { board_profile_url: url });
+    return null;
+  },
+});
+
+/** Debug: the alert row + case for a license (for the live-send check). */
+export const latestAlert = internalQuery({
+  args: { licenseId: v.id("licenses") },
+  handler: async (ctx, { licenseId }) => {
+    const lic = await ctx.db.get(licenseId);
+    if (!lic) return null;
+    const c = lic.open_case_id ? await ctx.db.get(lic.open_case_id) : null;
+    if (!c) return { open_case: null };
+    const alert = await ctx.db
+      .query("alerts")
+      .withIndex("by_case", (q) => q.eq("mismatch_case_id", c._id))
+      .first();
+    return {
+      case_id: c._id,
+      case_type: c.type,
+      detected_types: c.detail.detected_types,
+      alert: alert
+        ? {
+            send_status: alert.send_status,
+            agentmail_message_id: alert.agentmail_message_id,
+            agentmail_thread_id: alert.agentmail_thread_id,
+            to: alert.to,
+            send_error: alert.send_error,
+          }
+        : null,
+    };
+  },
+});
+
 /** List every license id + a one-line status (debug / cleanup). */
 export const listLicensesBrief = internalQuery({
   args: {},
