@@ -54,6 +54,57 @@ export function openaiExtractOk(fields: unknown = GENERIC_EXTRACTED_FIELDS): Res
   });
 }
 
+/** AgentMail POST /v0/inboxes/{id}/messages/send success. */
+export function agentMailSendOk(message_id = "am-msg-1", thread_id = "am-thr-1"): Response {
+  return mockResponse({ status: 200, json: { message_id, thread_id } });
+}
+
+/**
+ * Stub global fetch and route every external call:
+ *   - Firecrawl /v2/scrape        → opts.scrape[i] (fn of call index) or a generic ok body
+ *   - OpenAI  /v1/models          → a model list
+ *   - OpenAI  /chat/completions   → opts.extract (fields) or a generic Active extraction
+ *   - AgentMail /messages/send    → opts.send() or agentMailSendOk()
+ * Captures every AgentMail send body on `.sends`.
+ */
+export function stubExternal(opts?: {
+  scrape?: (callIndex: number) => Response | Error | "hang";
+  extract?: unknown;
+  send?: (callIndex: number) => Response | Error;
+}): ReturnType<typeof vi.fn> & { sends: unknown[] } {
+  let scrapeI = 0;
+  let sendI = 0;
+  const sends: unknown[] = [];
+  const fn = vi.fn((url: string, init?: { signal?: AbortSignal; body?: string }) => {
+    const u = String(url);
+    if (u.endsWith("/models")) return Promise.resolve(openaiModelsList());
+    if (u.includes("/chat/completions")) return Promise.resolve(openaiExtractOk(opts?.extract));
+    if (u.includes("/messages/send")) {
+      sends.push(init?.body ? JSON.parse(init.body) : null);
+      const b = opts?.send?.(sendI++);
+      if (b instanceof Error) return Promise.reject(b);
+      return Promise.resolve(b ?? agentMailSendOk());
+    }
+    // default: Firecrawl scrape
+    const b = opts?.scrape?.(scrapeI++);
+    if (b === "hang") {
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(abortError()));
+      });
+    }
+    if (b instanceof Error) return Promise.reject(b);
+    return Promise.resolve(
+      b ??
+        firecrawlOk(
+          "<html><body><table><tr><th>Licensee Name</th><td>Maria S. Gomez</td></tr><tr><th>License Status</th><td>Active</td></tr></table></body></html>",
+        ),
+    );
+  }) as ReturnType<typeof vi.fn> & { sends: unknown[] };
+  fn.sends = sends;
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
+
 /**
  * Stub global fetch. OpenAI endpoints (`/v1/models`, `/chat/completions`) are
  * auto-answered with a valid model list + a successful generic extraction, so

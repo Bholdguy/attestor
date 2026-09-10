@@ -601,6 +601,35 @@ no schema change.
 
 ---
 
+## D-18 — `alerts.send_status` gains a `"pending"` in-flight value — LOCKED (Step 8)
+
+**Planned (PRD §4 `alerts`):** `send_status: v.union(v.literal("sent"),
+v.literal("failed"))`.
+
+**Build reality (Step 8):** the I8 guarantee is "check-then-insert **inside a
+mutation**". `recordAlert` must claim the unique `alerts.by_case` slot *before*
+the AgentMail send returns — otherwise a Convex scheduled-function double-fire
+(at-least-once delivery) could have two `sendAlert`s both see "no row", both
+send, both insert. A slot claimed with `send_status:"failed"` would be
+indistinguishable from a genuinely failed send that an operator may retry.
+
+**Decision:** add a third value **`"pending"`**. `recordAlert` inserts the row
+`pending` (the claim); `finalizeAlert` patches it to `sent` or `failed`. Guard
+logic: an existing row that is `sent` or `pending` ⇒ `proceed:false` (no send);
+an existing `failed` row ⇒ operator retry allowed — the SAME row is re-set to
+`pending` and reused (never a second row). `alert.retryAlert` (a `mutation`, from
+the case UI) is the only operator entry point; the loop never retries.
+
+Invariant unchanged: **exactly one `alerts` row per case**, exactly one
+successful send. AC5 / `alert-once.test.ts` / `agentmail-failure.test.ts` all
+green.
+
+**Touches:** `convex/schema.ts` (`alerts.send_status` 3-value union),
+`convex/alert.ts`, `src/components/CaseDetail.tsx` (retry button), PRD §4 `alerts`
+row (should read the 3-value union), TESTING `alert-once` / `agentmail-failure`.
+
+---
+
 ## Running verification log (fill in on build day)
 
 | Item | Checked? | Result |
@@ -612,7 +641,7 @@ no schema change.
 | Firecrawl 429 shape + `Retry-After` header present | ◐ | Step 4 — `classify()` maps HTTP 429 → `rate_limited`/`fetch_http_code:429`; `Retry-After` header parsed. One **immediate** retry (D-13). No real 429 hit during BD-1 (free tier held); mapping is unit-covered (`rate-limit-recorded.test.ts`). |
 | Convex file storage `ctx.storage.store` / `ctx.storage.getUrl` (D-8) | ☑ | Step 4 — `loop.ts` writes the full body via `ctx.storage.store(new Blob([...]))`; `timeline.getSnapshot` returns `ctx.storage.getUrl(...)`. `loop-happy-path` asserts `raw_payload_storage_id` non-null; pushed + integration-green on `brazen-snail-826`. |
 | OpenAI Structured Outputs endpoint (`/v1/responses` `text.format` vs `/v1/chat/completions` `response_format`) + exact model id + price | ◐ | Step 5 — implemented against **`POST /v1/chat/completions`** with `response_format: { type:"json_schema", json_schema:{ name, strict:true, schema } }` (additionalProperties:false, all 9 keys required), `temperature:0`, `max_tokens` from `OPENAI_MAX_OUTPUT_TOKENS`. `refusal` handled. `bootModelCheck()` = `GET /v1/models`. Real round-trip + price eyeball = **BD-2**, pending `OPENAI_API_KEY` on the deployment. |
-| AgentMail create-inbox + `messages/send` path, field names, attachment shape | ☐ | |
+| AgentMail create-inbox + `messages/send` path, field names, attachment shape | ☑ | **Step 8 (2026-09-11)** — create verified live (D-14). Send: `POST /v0/inboxes/{inbox_id}/messages/send`, body `{to, cc?, subject, text, html, attachments[]}`, attachment `{filename, content_type, content(base64), content_disposition}`, response `{message_id, thread_id}` — confirmed against `docs.agentmail.to`. Wired in `convex/agentmail.ts` + `convex/alert.ts`; mocked tests green (`alert-once`, `agentmail-failure`). **A real send has NOT been made yet — awaiting reviewer confirmation.** |
 | Convex document size limit (confirm ~1 MiB) + `ctx.storage` API | ☐ | |
 | **D-3 pricing** — `gpt-4.1-mini` input/output $/1M against `platform.openai.com` console (resolve $0.40/$1.60 vs $0.80/$3.20 — B-2, non-blocking) | ☐ | **BD-2 (2026-09-10)** — still needs the reviewer to eyeball the console. Public docs (`openai.com/api/pricing`, retrieved 2026-09-10) show **`gpt-4.1-mini` = $0.40 / 1M input, $1.60 / 1M output** (cached input $0.10). Use this in DEMO.md/pitch unless the console shows otherwise. The $0.80/$3.20 figure from one earlier read was not reproduced. |
 | **D-3 live** — `GET /v1/models` returns `gpt-4.1-mini` (else `bootModelCheck` falls back to `gpt-4o-2024-08-06`) | ☑ / ⚠ | **BD-2 (2026-09-10)** — `boot:checkModel` on `brazen-snail-826`: `GET /v1/models` succeeded (free endpoint, no credits used), `gpt-4.1-mini` **present**, `resolved_model: "gpt-4.1-mini"` (no fallback). **⚠ (2026-09-11):** the actual extraction call (`POST /v1/chat/completions`) against the standing-evidence live scrape returned `insufficient_quota` / `credit_balance_exhausted` — **the OpenAI account has no credits.** Consequence: real OpenAI extraction can't run until credits are added; the mocked test suite is unaffected and demo mode (D-9, golden fixtures, zero OpenAI calls) is unaffected; DEMO Beat 3's OpenAI half + a standing "OpenAI does real work" snapshot are blocked pending credits. See D-16. |

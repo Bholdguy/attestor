@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as agentmail from "../agentmail.js";
 import type * as alert from "../alert.js";
 import type * as badge from "../badge.js";
 import type * as boot from "../boot.js";
@@ -38,6 +39,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentmail: typeof agentmail;
   alert: typeof alert;
   badge: typeof badge;
   boot: typeof boot;

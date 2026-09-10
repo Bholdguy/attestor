@@ -116,7 +116,10 @@ export default defineSchema({
     agentmail_message_id: v.union(v.string(), v.null()),
     agentmail_thread_id: v.union(v.string(), v.null()),
     to: v.string(),
-    send_status: v.union(v.literal("sent"), v.literal("failed")),
+    // "pending" is the in-flight claim written by recordAlert BEFORE the send —
+    // it is what makes the check-then-insert exactly-once even against a
+    // scheduler double-fire (I8 / D-18). finalizeAlert moves it to sent | failed.
+    send_status: v.union(v.literal("pending"), v.literal("sent"), v.literal("failed")),
     send_error: v.union(v.string(), v.null()),
   }).index("by_case", ["mismatch_case_id"]),
 

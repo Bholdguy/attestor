@@ -20,6 +20,7 @@ export function CaseDetail({
 }) {
   const c = useQuery(api.cases.getCase, { caseId });
   const resolveCase = useMutation(api.cases.resolveCase);
+  const retryAlert = useMutation(api.alert.retryAlert);
   const [decision, setDecision] = useState<"confirmed" | "dismissed">("confirmed");
   const [actor, setActor] = useState("");
   const [note, setNote] = useState("");
@@ -91,9 +92,22 @@ export function CaseDetail({
               <>
                 <dt>alert</dt>
                 <dd>
-                  {c.alert.send_status}
-                  {c.alert.agentmail_message_id ? ` · msg ${c.alert.agentmail_message_id}` : ""} ·{" "}
+                  <strong>{c.alert.send_status}</strong>
+                  {c.alert.agentmail_message_id ? ` · msg ${c.alert.agentmail_message_id}` : ""}
+                  {c.alert.agentmail_thread_id ? ` · thread ${c.alert.agentmail_thread_id}` : ""} ·{" "}
                   {fmt(c.alert.sent_at)}
+                  {c.alert.send_error ? (
+                    <>
+                      <br />
+                      <span style={{ color: "#b00020" }}>{c.alert.send_error}</span>
+                    </>
+                  ) : null}
+                  {c.alert.send_status === "failed" ? (
+                    <>
+                      {" "}
+                      <button onClick={() => retryAlert({ caseId })}>Retry send</button>
+                    </>
+                  ) : null}
                 </dd>
               </>
             ) : null}
