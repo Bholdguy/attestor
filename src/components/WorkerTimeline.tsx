@@ -11,9 +11,9 @@ function fmt(ts: number) {
 }
 
 const DISPO_COLOR: Record<string, string> = {
-  confirmed: "#0a7d28",
-  conflict: "#c47f00",
-  unconfirmed: "#888",
+  confirmed: "var(--green)",
+  conflict: "var(--amber)",
+  unconfirmed: "var(--grey)",
 };
 
 export function WorkerTimeline({
@@ -28,84 +28,78 @@ export function WorkerTimeline({
   const t = useQuery(api.timeline.getLicenseTimeline, { licenseId });
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        width: "min(680px, 100vw)",
-        height: "100vh",
-        background: "#fff",
-        borderLeft: "1px solid #ccc",
-        boxShadow: "-4px 0 16px rgba(0,0,0,0.08)",
-        padding: 20,
-        overflowY: "auto",
-        zIndex: 40,
-      }}
-    >
+    <aside className="drawer" style={{ width: "min(680px, 100vw)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h3 style={{ margin: 0 }}>Timeline</h3>
-        <button onClick={onClose}>Close</button>
+        <button className="btn btn-outline btn-sm" onClick={onClose}>
+          Close
+        </button>
       </div>
 
       {t === undefined ? (
-        <p>Loading…</p>
+        <p className="muted">Loading…</p>
       ) : t === null ? (
-        <p>Not found.</p>
+        <p className="muted">Not found.</p>
       ) : (
         <>
-          <p style={{ fontSize: 13 }}>
-            {badgeDisplay(t.badge).emoji} <strong>{badgeDisplay(t.badge).label}</strong> ·{" "}
-            {t.worker?.name_hired} ({t.license.license_number}, {t.license.issuing_state})
+          <p style={{ fontSize: 13, marginTop: 12 }}>
+            <span className={`badge ${t.badge}`}>
+              {badgeDisplay(t.badge).emoji} {badgeDisplay(t.badge).label}
+            </span>{" "}
+            &nbsp;{t.worker?.name_hired} ({t.license.license_number}, {t.license.issuing_state})
           </p>
-          <p style={{ fontSize: 12, color: "#555" }}>
+          <p className="small muted">
             confirmed snapshot:{" "}
-            <span style={{ fontFamily: "ui-monospace, monospace" }}>
+            <span className="mono">
               {t.license.current_confirmed_snapshot_id ?? "— (never confirmed)"}
             </span>
             {t.license.open_case_id ? " · open case" : ""}
             {!t.license.watch_enabled ? " · watch disabled" : ""}
           </p>
 
-          <h4 style={{ marginBottom: 4 }}>Snapshots</h4>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <h4 style={{ marginBottom: 6, fontFamily: "var(--sans)", fontSize: "0.72rem", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            Snapshots
+          </h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {t.snapshots.map((s, i) => (
               <button
                 key={s._id}
                 onClick={() => onOpenSnapshot(s._id)}
                 style={{
                   textAlign: "left",
-                  border: "1px solid #e0e0e0",
-                  borderLeft: `4px solid ${DISPO_COLOR[s.disposition] ?? "#888"}`,
-                  borderRadius: 4,
-                  padding: "6px 8px",
+                  border: "1px solid var(--line)",
+                  borderLeft: `3px solid ${DISPO_COLOR[s.disposition] ?? "var(--grey)"}`,
+                  borderRadius: 8,
+                  padding: "8px 10px",
                   fontSize: 12,
                   cursor: "pointer",
-                  background: s.is_confirmed_pointer ? "#f1f8f2" : "#fff",
+                  background: s.is_confirmed_pointer ? "var(--green-bg)" : "var(--card)",
+                  color: "var(--ink)",
                 }}
               >
-                <strong>T{i + 1}</strong> · {fmt(s.fetched_at)} · {s.source_mode} ·{" "}
-                {s.fetch_status}
+                <strong>T{i + 1}</strong> · {fmt(s.fetched_at)} · {s.source_mode} · {s.fetch_status}
                 {s.fetch_http_code != null ? ` (${s.fetch_http_code})` : ""} ·{" "}
                 <span style={{ color: DISPO_COLOR[s.disposition] }}>{s.disposition}</span>
                 {s.status_normalized ? ` · status ${s.status_normalized}` : ""}
                 {s.is_confirmed_pointer ? " · ← confirmed pointer" : ""}
                 {s.retry_of_snapshot_id ? (
-                  <div style={{ color: "#888" }}>↳ retry of {s.retry_of_snapshot_id}</div>
+                  <div className="muted">↳ retry of {s.retry_of_snapshot_id}</div>
                 ) : null}
-                <div style={{ fontFamily: "ui-monospace, monospace", color: "#999", fontSize: 10 }}>
+                <div className="mono muted" style={{ fontSize: 10 }}>
                   {s._id}
                 </div>
               </button>
             ))}
           </div>
 
-          <h4 style={{ marginBottom: 4, marginTop: 16 }}>Audit events</h4>
-          <ol style={{ fontSize: 11, lineHeight: 1.5, paddingLeft: 18 }}>
+          <h4 style={{ marginBottom: 6, marginTop: 18, fontFamily: "var(--sans)", fontSize: "0.72rem", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            Audit events
+          </h4>
+          <ol style={{ fontSize: 11, lineHeight: 1.6, paddingLeft: 18, color: "var(--ink-2)" }}>
             {t.audit_events.map((a) => (
               <li key={a._id}>
                 <code>{a.stage}</code> · {a.outcome} · {a.message}{" "}
-                <span style={{ color: "#999" }}>({a.actor})</span>
+                <span className="muted">({a.actor})</span>
               </li>
             ))}
           </ol>

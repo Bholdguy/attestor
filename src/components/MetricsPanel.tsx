@@ -24,7 +24,7 @@ export function MetricsPanel() {
   if (!m) return null;
   const row = m as unknown as Record<string, number | null>;
   return (
-    <section style={{ margin: "12px 0" }}>
+    <section style={{ margin: "0 0 20px" }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {CELLS.map((c) => {
           const v = row[c.key];
@@ -33,21 +33,28 @@ export function MetricsPanel() {
             <div
               key={c.key}
               style={{
-                border: `1px solid ${good ? "#bcdcc4" : "#e6b8b8"}`,
-                background: good ? "#f1f8f2" : "#fdf1f1",
-                borderRadius: 6,
-                padding: "6px 10px",
-                fontSize: 12,
-                minWidth: 96,
+                border: "1px solid",
+                borderColor: good
+                  ? "color-mix(in srgb, var(--green) 24%, transparent)"
+                  : "color-mix(in srgb, var(--amber) 30%, transparent)",
+                background: good ? "var(--green-bg)" : "var(--amber-bg)",
+                color: good ? "var(--green)" : "var(--amber)",
+                borderRadius: "var(--radius-sm)",
+                padding: "8px 12px",
+                minWidth: 104,
               }}
             >
-              <div style={{ color: "#666" }}>{c.label}</div>
-              <div style={{ fontWeight: 600 }}>{c.fmt(v)}</div>
+              <div className="small" style={{ color: "var(--ink-3)" }}>
+                {c.label}
+              </div>
+              <div style={{ fontWeight: 600, fontSize: "0.98rem", fontFamily: "var(--serif)" }}>
+                {c.fmt(v)}
+              </div>
             </div>
           );
         })}
       </div>
-      <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+      <div className="small muted" style={{ marginTop: 6 }}>
         snapshots {m.counts.snapshots} · cases {m.counts.cases} ({m.counts.open_cases} open) · alerts
         sent {m.counts.alerts_sent}
       </div>

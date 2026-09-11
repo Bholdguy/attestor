@@ -29,3 +29,4 @@ skills-lock.json
 .vscode/
 *.log
 npm-debug.log*
+.shots/

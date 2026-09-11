@@ -21,38 +21,28 @@ export function SnapshotDrawer({
   const snap = useQuery(api.timeline.getSnapshot, { snapshotId });
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        width: "min(560px, 100vw)",
-        height: "100vh",
-        background: "#fff",
-        borderLeft: "1px solid #ccc",
-        boxShadow: "-4px 0 16px rgba(0,0,0,0.08)",
-        padding: 20,
-        overflowY: "auto",
-        zIndex: 50,
-      }}
-    >
+    <aside className="drawer" style={{ width: "min(560px, 100vw)", zIndex: 50 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h3 style={{ margin: 0 }}>Snapshot</h3>
-        <button onClick={onClose}>Close</button>
+        <button className="btn btn-outline btn-sm" onClick={onClose}>
+          Close
+        </button>
       </div>
 
       {snap === undefined ? (
-        <p>Loading…</p>
+        <p className="muted">Loading…</p>
       ) : snap === null ? (
-        <p>Snapshot not found.</p>
+        <p className="muted">Snapshot not found.</p>
       ) : (
         <>
-          <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 13 }}>
+          <dl className="kv" style={{ marginTop: 12 }}>
             <dt>snapshot_id</dt>
-            <dd style={{ fontFamily: "ui-monospace, monospace" }}>{snap._id}</dd>
+            <dd className="mono">{snap._id}</dd>
             <dt>disposition</dt>
             <dd>
-              <strong>{snap.disposition}</strong>
+              <span className={`badge ${snap.disposition === "confirmed" ? "verified" : snap.disposition === "conflict" ? "needs_review" : "unconfirmed"}`}>
+                {snap.disposition}
+              </span>
             </dd>
             <dt>source_mode</dt>
             <dd>
@@ -60,7 +50,7 @@ export function SnapshotDrawer({
               {snap.source_mode === "fixture" ? " (DEMO DATA — not a live board)" : ""}
             </dd>
             <dt>source_url</dt>
-            <dd style={{ wordBreak: "break-all" }}>{snap.source_url}</dd>
+            <dd>{snap.source_url}</dd>
             <dt>fetch_status</dt>
             <dd>
               {snap.fetch_status}
@@ -71,9 +61,7 @@ export function SnapshotDrawer({
             <dt>raw bytes</dt>
             <dd>{snap.raw_payload_bytes.toLocaleString()}</dd>
             <dt>sha256</dt>
-            <dd style={{ fontFamily: "ui-monospace, monospace", wordBreak: "break-all" }}>
-              {snap.raw_payload_sha256}
-            </dd>
+            <dd className="mono">{snap.raw_payload_sha256}</dd>
             {snap.retry_of ? (
               <>
                 <dt>retry of</dt>
@@ -100,8 +88,8 @@ export function SnapshotDrawer({
               <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
                 <tbody>
                   {Object.entries(snap.extracted_fields).map(([k, val]) => (
-                    <tr key={k} style={{ borderBottom: "1px solid #eee" }}>
-                      <td style={{ padding: "2px 8px", color: "#666" }}>{k}</td>
+                    <tr key={k} style={{ borderBottom: "1px solid var(--line)" }}>
+                      <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>{k}</td>
                       <td style={{ padding: "2px 8px" }}>{val === null ? "—" : String(val)}</td>
                     </tr>
                   ))}
@@ -114,9 +102,9 @@ export function SnapshotDrawer({
             <>
               <h4 style={{ marginBottom: 4 }}>Diff vs last confirmed</h4>
               {snap.diff_result.compared_snapshot_id == null ? (
-                <p style={{ fontSize: 12, color: "#666" }}>first snapshot — nothing to diff</p>
+                <p style={{ fontSize: 12, color: "var(--ink-3)" }}>first snapshot — nothing to diff</p>
               ) : snap.diff_result.agrees ? (
-                <p style={{ fontSize: 12, color: "#0a7d28" }}>agrees with {snap.diff_result.compared_snapshot_id}</p>
+                <p style={{ fontSize: 12, color: "var(--green)" }}>agrees with {snap.diff_result.compared_snapshot_id}</p>
               ) : (
                 <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
                   <thead>
@@ -128,7 +116,7 @@ export function SnapshotDrawer({
                   </thead>
                   <tbody>
                     {snap.diff_result.conflicts.map((c) => (
-                      <tr key={c.field} style={{ background: "#fff3cd" }}>
+                      <tr key={c.field} style={{ background: "var(--amber-bg)" }}>
                         <td style={{ padding: "2px 8px" }}>{c.field}</td>
                         <td style={{ padding: "2px 8px" }}>{c.prior}</td>
                         <td style={{ padding: "2px 8px" }}>{c.current}</td>
@@ -146,21 +134,21 @@ export function SnapshotDrawer({
               <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
                 <tbody>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>match_confidence</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>match_confidence</td>
                     <td style={{ padding: "2px 8px" }}>
                       <strong>{snap.identity_result.match_confidence}</strong>
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>mismatch_reason</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>mismatch_reason</td>
                     <td style={{ padding: "2px 8px" }}>{snap.identity_result.mismatch_reason}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>number_matches</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>number_matches</td>
                     <td style={{ padding: "2px 8px" }}>{String(snap.identity_result.number_matches)}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>name_similarity</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>name_similarity</td>
                     <td style={{ padding: "2px 8px" }}>
                       {snap.identity_result.registered_name_similarity.toFixed(2)}
                     </td>
@@ -176,23 +164,23 @@ export function SnapshotDrawer({
               <table style={{ borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
                 <tbody>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>valid</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>valid</td>
                     <td style={{ padding: "2px 8px" }}>
-                      <strong style={{ color: snap.privilege_result.valid ? "#0a7d28" : "#b00020" }}>
+                      <strong style={{ color: snap.privilege_result.valid ? "var(--green)" : "var(--amber)" }}>
                         {String(snap.privilege_result.valid)}
                       </strong>
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>reason</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>reason</td>
                     <td style={{ padding: "2px 8px" }}>{snap.privilege_result.reason}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>assignment_state</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>assignment_state</td>
                     <td style={{ padding: "2px 8px" }}>{snap.privilege_result.assignment_state}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: "2px 8px", color: "#666" }}>compact_member</td>
+                    <td style={{ padding: "2px 8px", color: "var(--ink-3)" }}>compact_member</td>
                     <td style={{ padding: "2px 8px" }}>{String(snap.privilege_result.compact_member)}</td>
                   </tr>
                 </tbody>
@@ -201,20 +189,7 @@ export function SnapshotDrawer({
           )}
 
           <h4 style={{ marginBottom: 4 }}>Raw payload excerpt (first 4 KB, as text)</h4>
-          <pre
-            style={{
-              background: "#f6f6f6",
-              border: "1px solid #e0e0e0",
-              padding: 10,
-              fontSize: 11,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              maxHeight: 360,
-              overflow: "auto",
-            }}
-          >
-            {snap.raw_payload_excerpt || "(empty)"}
-          </pre>
+          <pre className="pre">{snap.raw_payload_excerpt || "(empty)"}</pre>
         </>
       )}
     </aside>

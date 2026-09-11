@@ -62,8 +62,8 @@ export function CompareView({
               </thead>
               <tbody>
                 {cmp.rows.map((r) => (
-                  <tr key={r.field} style={{ background: r.differs ? "#fff3cd" : undefined }}>
-                    <td style={{ padding: "4px 8px", color: "#666" }}>{r.field}</td>
+                  <tr key={r.field} style={{ background: r.differs ? "var(--amber-bg)" : undefined }}>
+                    <td style={{ padding: "4px 8px", color: "var(--ink-3)" }}>{r.field}</td>
                     <td style={{ padding: "4px 8px" }}>{r.a}</td>
                     <td style={{ padding: "4px 8px" }}>{r.b}</td>
                   </tr>

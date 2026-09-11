@@ -23,6 +23,7 @@ import type * as fixtures_index from "../fixtures/index.js";
 import type * as gate from "../gate.js";
 import type * as health from "../health.js";
 import type * as identity from "../identity.js";
+import type * as landing from "../landing.js";
 import type * as lib_hash from "../lib/hash.js";
 import type * as loop from "../loop.js";
 import type * as metrics from "../metrics.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   gate: typeof gate;
   health: typeof health;
   identity: typeof identity;
+  landing: typeof landing;
   "lib/hash": typeof lib_hash;
   loop: typeof loop;
   metrics: typeof metrics;

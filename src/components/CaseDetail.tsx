@@ -43,36 +43,24 @@ export function CaseDetail({
   }
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        width: "min(620px, 100vw)",
-        height: "100vh",
-        background: "#fff",
-        borderLeft: "1px solid #ccc",
-        boxShadow: "-4px 0 16px rgba(0,0,0,0.08)",
-        padding: 20,
-        overflowY: "auto",
-        zIndex: 60,
-      }}
-    >
+    <aside className="drawer" style={{ width: "min(620px, 100vw)", zIndex: 60 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h3 style={{ margin: 0 }}>Mismatch case</h3>
-        <button onClick={onClose}>Close</button>
+        <button className="btn btn-outline btn-sm" onClick={onClose}>
+          Close
+        </button>
       </div>
 
       {c === undefined ? (
-        <p>Loading…</p>
+        <p className="muted">Loading…</p>
       ) : c === null ? (
-        <p>Case not found.</p>
+        <p className="muted">Case not found.</p>
       ) : (
         <>
-          <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 13 }}>
+          <dl className="kv" style={{ marginTop: 12 }}>
             <dt>type</dt>
             <dd>
-              <strong>{c.type}</strong>
+              <span className="badge needs_review">{c.type}</span>
             </dd>
             <dt>detected_types</dt>
             <dd>{c.detail.detected_types.join(", ")}</dd>
@@ -93,7 +81,7 @@ export function CaseDetail({
             <dt />
             <dd>
               {onCompare && (
-                <button onClick={() => onCompare(c.snapshot_a_id, c.snapshot_b_id)}>
+                <button className="btn btn-outline btn-sm" onClick={() => onCompare(c.snapshot_a_id, c.snapshot_b_id)}>
                   Compare A vs B
                 </button>
               )}
@@ -109,13 +97,13 @@ export function CaseDetail({
                   {c.alert.send_error ? (
                     <>
                       <br />
-                      <span style={{ color: "#b00020" }}>{c.alert.send_error}</span>
+                      <span style={{ color: "var(--amber)" }}>{c.alert.send_error}</span>
                     </>
                   ) : null}
                   {c.alert.send_status === "failed" ? (
                     <>
                       {" "}
-                      <button onClick={() => retryAlert({ caseId })}>Retry send</button>
+                      <button className="btn btn-outline btn-sm" onClick={() => retryAlert({ caseId })}>Retry send</button>
                     </>
                   ) : null}
                 </dd>
@@ -146,7 +134,7 @@ export function CaseDetail({
                 </thead>
                 <tbody>
                   {c.detail.conflicts.map((x) => (
-                    <tr key={x.field} style={{ background: "#fff3cd" }}>
+                    <tr key={x.field} style={{ background: "var(--amber-bg)" }}>
                       <td style={{ padding: "2px 8px" }}>{x.field}</td>
                       <td style={{ padding: "2px 8px" }}>{x.prior}</td>
                       <td style={{ padding: "2px 8px" }}>{x.current}</td>
@@ -176,10 +164,10 @@ export function CaseDetail({
                   Note (required)
                   <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} />
                 </label>
-                <button onClick={submit} disabled={busy}>
+                <button className="btn" onClick={submit} disabled={busy}>
                   {busy ? "Resolving…" : "Resolve case"}
                 </button>
-                {err && <p style={{ color: "#b00020", whiteSpace: "pre-wrap" }}>{err}</p>}
+                {err && <p style={{ color: "var(--amber)", whiteSpace: "pre-wrap" }}>{err}</p>}
               </div>
             </>
           )}
