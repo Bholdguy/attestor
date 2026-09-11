@@ -64,6 +64,7 @@ export function WorkerTimeline({
             {t.snapshots.map((s, i) => (
               <button
                 key={s._id}
+                className="row-enter"
                 onClick={() => onOpenSnapshot(s._id)}
                 style={{
                   textAlign: "left",

@@ -33,6 +33,13 @@
   --radius-sm: 8px;
   --maxw: 1080px;
 
+  /* motion — calm and trustworthy, not playful. Off by default under
+     prefers-reduced-motion (see the reset at the bottom of this file). */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 150ms;
+  --dur: 400ms;
+  --dur-slow: 900ms;
+
   color-scheme: light;
 }
 
@@ -199,23 +206,33 @@ button {
   font-weight: 500;
   cursor: pointer;
   text-decoration: none;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--dur-fast) ease, transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
 .btn:hover {
   opacity: 0.86;
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 6px 16px -8px rgba(28, 26, 23, 0.35);
+}
+.btn:active {
+  transform: translateY(0) scale(0.99);
 }
 .btn:disabled {
   opacity: 0.5;
   cursor: default;
+  transform: none;
+  box-shadow: none;
 }
 .btn-outline {
   background: transparent;
   color: var(--ink);
   border: 1px solid var(--line-2);
+  box-shadow: none;
 }
 .btn-outline:hover {
   border-color: var(--ink);
   opacity: 1;
+  box-shadow: 0 6px 16px -10px rgba(28, 26, 23, 0.25);
 }
 .btn-sm {
   padding: 6px 14px;
@@ -228,6 +245,12 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 20px;
+  box-shadow: 0 0 0 0 rgba(28, 26, 23, 0);
+  transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.card:hover {
+  border-color: var(--line-2);
+  box-shadow: 0 14px 32px -22px rgba(28, 26, 23, 0.35);
 }
 .card-quiet {
   background: var(--paper-2);
@@ -295,6 +318,19 @@ button {
   color: var(--amber);
   background: var(--amber-bg);
   border-color: color-mix(in srgb, var(--amber) 24%, transparent);
+  position: relative;
+  /* Needs Review is the only badge that pulses at rest — it's the state the
+     product exists to surface. Kept subtle: a soft ring, no flashing. */
+  animation: badge-pulse 2.6s var(--ease) infinite;
+}
+@keyframes badge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--amber) 32%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--amber) 0%, transparent);
+  }
 }
 .badge.unconfirmed {
   color: var(--grey);
@@ -302,7 +338,7 @@ button {
   border-color: var(--line-2);
 }
 
-/* ── ticker ────────────────────────────────────────────────────────────── */
+/* ── ticker — slow marquee, pauses on hover, static row under reduced motion ── */
 .ticker {
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -310,18 +346,34 @@ button {
   padding: 12px 0;
   overflow: hidden;
 }
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll 32s linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
 .ticker-inner {
-  max-width: var(--maxw);
-  margin: 0 auto;
+  flex: 0 0 auto;
   padding: 0 24px;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px 22px;
   font-size: 0.72rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-3);
   font-weight: 600;
+  white-space: nowrap;
 }
 .ticker-inner span::before {
   content: "·";
@@ -331,6 +383,17 @@ button {
 .ticker-inner span:first-child::before {
   content: "";
   margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+    transform: none;
+    width: 100%;
+    justify-content: center;
+  }
+  .ticker-track [aria-hidden="true"] {
+    display: none;
+  }
 }
 
 /* ── numbered steps ────────────────────────────────────────────────────── */
@@ -498,4 +561,166 @@ button {
 }
 .small {
   font-size: 0.82rem;
+}
+
+/* ── scroll reveals — fade + slight rise, once per section ──────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.reveal-stagger.is-visible > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-stagger.is-visible > *:nth-child(1) {
+  transition-delay: 0ms;
+}
+.reveal-stagger.is-visible > *:nth-child(2) {
+  transition-delay: 70ms;
+}
+.reveal-stagger.is-visible > *:nth-child(3) {
+  transition-delay: 140ms;
+}
+.reveal-stagger.is-visible > *:nth-child(4) {
+  transition-delay: 210ms;
+}
+.reveal-stagger.is-visible > *:nth-child(5) {
+  transition-delay: 280ms;
+}
+.reveal-stagger.is-visible > *:nth-child(6) {
+  transition-delay: 350ms;
+}
+.reveal-stagger.is-visible > *:nth-child(7) {
+  transition-delay: 420ms;
+}
+
+/* ── hero atmosphere — slow, soft, low-contrast wash behind the headline ── */
+.hero-wash {
+  position: absolute;
+  inset: -15% -10% auto -10%;
+  height: 520px;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+      620px 320px at 18% 22%,
+      color-mix(in srgb, var(--green) 7%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      560px 300px at 82% 34%,
+      color-mix(in srgb, var(--amber) 7%, transparent),
+      transparent 62%
+    );
+  filter: blur(30px);
+  animation: wash-drift 28s ease-in-out infinite alternate;
+}
+@keyframes wash-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(2.5%, 1.5%, 0) scale(1.06);
+  }
+}
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── dashboard ground — very low-opacity dot grid, cards stay foreground ── */
+.dash-ground {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--ink) 7%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}
+
+/* ── Run Demo scan overlay — decorative only, <1s, never gates the mutation ── */
+.scan-host {
+  position: relative;
+  overflow: hidden;
+}
+.scan-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in srgb, var(--green) 20%, transparent) 45%,
+    transparent 88%
+  );
+  transform: translateX(-120%);
+  animation: scan-sweep 700ms ease-out;
+}
+@keyframes scan-sweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
+}
+
+/* ── new rows / dots — fade + short slide as they mount, never a fake wait ── */
+.row-enter {
+  animation: row-in var(--dur) var(--ease) both;
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── reduced motion — calm and trustworthy means "off", not "slower" ─────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal,
+  .reveal-stagger > * {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .hero-wash {
+    animation: none;
+  }
+  .badge.needs_review {
+    animation: none;
+  }
+  .scan-overlay {
+    display: none;
+  }
+  .row-enter {
+    animation: none;
+  }
+  .btn:hover,
+  .card:hover {
+    transform: none;
+  }
 }

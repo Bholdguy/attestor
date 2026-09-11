@@ -1,5 +1,6 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Reveal } from "../lib/useReveal";
 
 const REPO = "https://github.com/Bholdguy/attestor";
 
@@ -65,7 +66,7 @@ function EvidenceSection() {
   const ev = useQuery(api.landing.standingEvidence);
 
   return (
-    <section className="section" id="verify">
+    <Reveal as="section" className="section" id="verify">
       <div className="wrap">
         <p className="eyebrow">Verify before you trust</p>
         <h2>Real snapshots from this deployment</h2>
@@ -124,7 +125,7 @@ function EvidenceSection() {
           </div>
         )}
       </div>
-    </section>
+    </Reveal>
   );
 }
 
@@ -166,8 +167,9 @@ export function Landing() {
       </header>
 
       {/* 2 — hero */}
-      <section className="section" style={{ paddingTop: 72 }}>
-        <div className="wrap">
+      <section className="section" style={{ paddingTop: 72, position: "relative", overflow: "hidden" }}>
+        <div className="hero-wash" aria-hidden="true" />
+        <div className="wrap hero-content">
           <div
             style={{
               display: "grid",
@@ -201,18 +203,26 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 3 — ticker */}
+      {/* 3 — ticker: slow marquee, pauses on hover, static row under reduced motion */}
       <div className="ticker">
-        <div className="ticker-inner">
-          <span>Fetches real board pages</span>
-          <span>Append-only audit log</span>
-          <span>Identity-bound, not name-matched</span>
-          <span>Fails closed</span>
+        <div className="ticker-track">
+          <div className="ticker-inner">
+            <span>Fetches real board pages</span>
+            <span>Append-only audit log</span>
+            <span>Identity-bound, not name-matched</span>
+            <span>Fails closed</span>
+          </div>
+          <div className="ticker-inner" aria-hidden="true">
+            <span>Fetches real board pages</span>
+            <span>Append-only audit log</span>
+            <span>Identity-bound, not name-matched</span>
+            <span>Fails closed</span>
+          </div>
         </div>
       </div>
 
       {/* 4 — problem / mechanism */}
-      <section className="section">
+      <Reveal as="section" className="section">
         <div className="wrap">
           <div className="grid grid-2" style={{ alignItems: "start", gap: 32 }}>
             <div>
@@ -268,14 +278,14 @@ export function Landing() {
             </div>
           </div>
         </div>
-      </section>
+      </Reveal>
 
-      {/* 5 — feature grid */}
+      {/* 5 — feature grid (children stagger in together) */}
       <section className="section" id="features">
         <div className="wrap">
           <p className="eyebrow">What Attestor can do</p>
           <h2>Seven stages, each independently observable.</h2>
-          <div className="grid grid-3" style={{ marginTop: 24 }}>
+          <Reveal as="div" stagger className="grid grid-3" style={{ marginTop: 24 }}>
             {FEATURES.map(([t, d]) => (
               <div className="card" key={t}>
                 <h3 style={{ marginBottom: 6 }}>{t}</h3>
@@ -284,16 +294,16 @@ export function Landing() {
                 </p>
               </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
-      {/* 6 — how it works */}
+      {/* 6 — how it works (children stagger in together) */}
       <section className="section" id="how">
         <div className="wrap">
           <p className="eyebrow">How Attestor works</p>
           <h2>From roster row to resolved case.</h2>
-          <div className="grid grid-4" style={{ marginTop: 24 }}>
+          <Reveal as="div" stagger className="grid grid-4" style={{ marginTop: 24 }}>
             {STEPS.map(([t, d], i) => (
               <div className="card-quiet" key={t}>
                 <div className="step-num">0{i + 1}</div>
@@ -303,12 +313,12 @@ export function Landing() {
                 </p>
               </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* 7 — trust row */}
-      <section className="section">
+      <Reveal as="section" className="section">
         <div className="wrap">
           <div className="grid grid-3">
             {[
@@ -325,13 +335,13 @@ export function Landing() {
             ))}
           </div>
         </div>
-      </section>
+      </Reveal>
 
       {/* 8 — verify (real data) */}
       <EvidenceSection />
 
       {/* 9 — FAQ */}
-      <section className="section" id="faq">
+      <Reveal as="section" className="section" id="faq">
         <div className="wrap">
           <p className="eyebrow">FAQ</p>
           <h2>Questions</h2>
@@ -365,10 +375,10 @@ export function Landing() {
             ))}
           </div>
         </div>
-      </section>
+      </Reveal>
 
       {/* 10 — closing band */}
-      <div className="band">
+      <Reveal as="div" className="band">
         <div className="wrap">
           <h2 style={{ maxWidth: "18ch", margin: "0 auto 20px" }}>
             See it catch a mismatch it never overwrites.
@@ -377,7 +387,7 @@ export function Landing() {
             Run Demo
           </button>
         </div>
-      </div>
+      </Reveal>
 
       {/* 11 — footer */}
       <footer className="footer">

@@ -60,6 +60,7 @@ export function Dashboard() {
 
   return (
     <>
+      <div className="dash-ground" aria-hidden="true" />
       <DemoBanner />
 
       <header className="nav">
@@ -178,7 +179,7 @@ export function Dashboard() {
                   {roster.map((r) => {
                     const b = badgeDisplay(r.badge);
                     return (
-                      <tr key={r.licenseId}>
+                      <tr key={r.licenseId} className="row-enter">
                         <td>
                           <span className={`badge ${r.badge}`}>
                             {b.emoji} {b.label}
@@ -261,7 +262,12 @@ export function Dashboard() {
                 </thead>
                 <tbody>
                   {openCases.map((c) => (
-                    <tr key={c._id} onClick={() => setOpenCase(c._id)} style={{ cursor: "pointer" }}>
+                    <tr
+                      key={c._id}
+                      className="row-enter"
+                      onClick={() => setOpenCase(c._id)}
+                      style={{ cursor: "pointer" }}
+                    >
                       <td>
                         <span className="badge needs_review">{c.type}</span>
                       </td>
