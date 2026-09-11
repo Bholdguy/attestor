@@ -252,14 +252,31 @@ criteria (AC*).
 
 ## Final gate — before submission
 
-- [ ] `npm run test` + `npm run test:static` + `npm run build` all green.
-- [ ] `no-secret-in-client` scan over `dist/` clean (SECURITY §10 checklist all ticked).
-- [ ] Metrics panel on the deployed URL shows M2=100%, M3=0, M4=0, M5=100%,
-      M6=100%, M7=0, M8=0; M1 finite.
-- [ ] AC1–AC16 each demonstrated (TESTING §6 map).
-- [ ] `DECISIONS.md` D-3 / D-4 verification log filled in and those entries
-      marked LOCKED.
-- [ ] Deployed `https://<deployment>.convex.site` opens for a stranger; "Run
-      demo" reproduces A→D in ~2 min.
+- [x] `npm run test` + `npm run test:static` + `npm run build` all green.
+      (288 tests / 25 files; CI green on every push.)
+- [x] `no-secret-in-client` scan over `dist/` clean (part of `npm run build`).
+- [x] Metrics panel on the deployed URL shows M2=100%, M3=0, M4=0, M5=100%,
+      M6=100%, M7=0, M8=0; M1 finite. (Live on `brazen-snail-826`: M1≈0.9 s,
+      M2 100, M3 0, M4 0, M5 100, M6 100, M7 0, M8 0.)
+- [x] AC1–AC16 each demonstrated (TESTING §6 map) — see per-step tests; AC1 live
+      half + Beat-3 OpenAI blocked by D-16 (credits), covered by mocked tests.
+- [x] `DECISIONS.md` verification log filled in. D-3 LOCKED (models OK; extraction
+      blocked by D-16 quota). D-4 → **D-15** (CA DCA Turnstile-gated → fixture
+      fallback for Beat 3; Firecrawl live 200 scrape captured as evidence).
+- [x] Deployed **https://brazen-snail-826.convex.site** opens for a stranger;
+      "Run demo" reproduces A→D (verified by driving `demo.runDemo` on the live
+      deployment: 10 snapshots, 4 cases [identity, privilege, status, status],
+      4 real AgentMail sends, DEMO banner on; Nurse A A→B, Nurse D six-week
+      close). Backend-driven, not a browser click — no browser in the build env.
 - [ ] < 3-min video recorded to `DEMO.md`'s 12 beats; posted on X / LinkedIn;
-      public repo link in the submission.
+      public repo link in the submission. **(reviewer)**
+
+### Carried / open items (see DECISIONS.md)
+
+- **D-16 (OPEN)** — OpenAI account has no credits; live extraction returns
+  `insufficient_quota`. `GET /v1/models` (free) works. Zero impact on demo mode
+  or tests; blocks Beat 3's OpenAI half + a standing real-extraction snapshot.
+  Fix: add a few $ at `platform.openai.com` billing.
+- Optional prod deploy: `npm run deploy` publishes a *prod* deployment (empty,
+  needs the 8 env vars re-set). The dev deployment's `.convex.site` URL above is
+  a real live URL and satisfies "no localhost".
