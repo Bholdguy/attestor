@@ -33,6 +33,8 @@ export default function App() {
   const roster = useQuery(api.roster.listRoster);
   const openCases = useQuery(api.cases.listOpenCases);
   const addWorker = useMutation(api.roster.addWorker);
+  const checkNow = useMutation(api.roster.checkNow);
+  const [checking, setChecking] = useState<string | null>(null);
   const [form, setForm] = useState({ ...BLANK });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -126,6 +128,7 @@ export default function App() {
                 <th style={{ padding: "6px 8px" }}>State</th>
                 <th style={{ padding: "6px 8px" }}>Confirmed snapshot (I1)</th>
                 <th style={{ padding: "6px 8px" }}>Latest</th>
+                <th style={{ padding: "6px 8px" }} />
               </tr>
             </thead>
             <tbody>
@@ -171,6 +174,21 @@ export default function App() {
                       ) : (
                         "—"
                       )}
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <button
+                        disabled={checking === r.licenseId}
+                        onClick={async () => {
+                          setChecking(r.licenseId);
+                          try {
+                            await checkNow({ licenseId: r.licenseId });
+                          } finally {
+                            setTimeout(() => setChecking(null), 1500);
+                          }
+                        }}
+                      >
+                        {checking === r.licenseId ? "Checking…" : "Check now"}
+                      </button>
                     </td>
                   </tr>
                 );

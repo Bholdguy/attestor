@@ -131,6 +131,19 @@ export const addWorker = mutation({
   },
 });
 
+/** Manual single-license re-fetch (DEMO Beat 3 "Check now"). Schedules one
+ *  runForLicense; the loop does the rest (live Firecrawl+OpenAI, or fixture). */
+export const checkNow = mutation({
+  args: { licenseId: v.id("licenses") },
+  returns: v.object({ scheduled: v.boolean() }),
+  handler: async (ctx, { licenseId }) => {
+    const license = await ctx.db.get(licenseId);
+    if (!license) throw new ConvexError(`checkNow: license ${licenseId} not found`);
+    await ctx.scheduler.runAfter(0, internal.loop.runForLicense, { licenseId });
+    return { scheduled: true };
+  },
+});
+
 /** Lower-level: add another license to an existing worker (tests / multi-license). */
 export const addLicense = mutation({
   args: {
